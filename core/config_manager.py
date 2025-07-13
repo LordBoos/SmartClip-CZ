@@ -28,7 +28,10 @@ class ConfigManager:
                 "co to bylo", "to je šílené", "neuvěřitelné", "holy shit",
                 "to je hustý", "parádní", "skvělý", "výborný"
             ],
-            "audio_sources": ["Desktop Audio"],
+            "microphone_enabled": True,
+            "microphone_source": "",  # Will auto-detect best source
+            "voice_chat_enabled": False,
+            "voice_chat_source": "",
             "twitch_client_id": "",
             "twitch_oauth_token": "",
             "twitch_broadcaster_id": "",
@@ -174,9 +177,15 @@ class ConfigManager:
                 if not config['activation_phrases']:
                     config['activation_phrases'] = self.default_config['activation_phrases']
             
-            # Validate audio sources
-            if not isinstance(config.get('audio_sources'), list):
-                config['audio_sources'] = ["Desktop Audio"]
+            # Validate microphone settings
+            if not isinstance(config.get('microphone_enabled'), bool):
+                config['microphone_enabled'] = True
+            if not isinstance(config.get('microphone_source'), str):
+                config['microphone_source'] = ""  # Will auto-detect
+            if not isinstance(config.get('voice_chat_enabled'), bool):
+                config['voice_chat_enabled'] = False
+            if not isinstance(config.get('voice_chat_source'), str):
+                config['voice_chat_source'] = ""
             
             # Validate Twitch settings
             twitch_fields = ['twitch_client_id', 'twitch_oauth_token', 'twitch_broadcaster_id']

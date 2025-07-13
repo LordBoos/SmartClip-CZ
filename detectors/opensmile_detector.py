@@ -554,9 +554,15 @@ printHeader=1
             # Analyze features for emotion detection
             emotion_result = self._analyze_features_for_emotion(features)
 
-            if emotion_result and emotion_result.get('confidence', 0) > self.sensitivity:
-                return emotion_result
-            
+            if emotion_result:
+                detection_threshold = self._map_sensitivity_to_threshold(self.sensitivity)
+                raw_confidence = emotion_result.get('confidence', 0)
+
+                if raw_confidence > detection_threshold:
+                    # Normalize confidence for consistent reporting
+                    emotion_result['confidence'] = self._normalize_confidence_for_sensitivity(raw_confidence, self.sensitivity)
+                    return emotion_result
+
             return None
             
         except Exception as e:
@@ -612,15 +618,20 @@ printHeader=1
                 detected_emotion = 'anger'
                 confidence = min(0.75, mean_value + std_value * 0.3)
             
-            if confidence > self.sensitivity:
+            detection_threshold = self._map_sensitivity_to_threshold(self.sensitivity)
+
+            if confidence > detection_threshold:
+                # Normalize confidence for consistent reporting
+                final_confidence = self._normalize_confidence_for_sensitivity(confidence, self.sensitivity)
+
                 return {
                     'emotion': detected_emotion,
-                    'confidence': confidence,
+                    'confidence': final_confidence,
                     'features': features,
                     'type': 'opensmile',
                     'timestamp': datetime.now().isoformat()
                 }
-            
+
             return None
             
         except Exception as e:
@@ -645,7 +656,47 @@ printHeader=1
         self.sensitivity = max(0.1, min(1.0, sensitivity))
 
         if log_change and abs(old_sensitivity - self.sensitivity) > 0.001:
-            self.logger.info(f"OpenSMILE sensitivity updated to {self.sensitivity}")
+            threshold = self._map_sensitivity_to_threshold(self.sensitivity)
+            self.logger.info(f"OpenSMILE sensitivity updated to {self.sensitivity} (detection threshold: {threshold:.3f})")
+
+    def _map_sensitivity_to_threshold(self, sensitivity: float) -> float:
+        """Map UI sensitivity (0.1-1.0) to internal detection threshold"""
+        # Much more conservative mapping to reduce false positives
+        # Map 0.1 -> 0.9 (very high threshold, almost no detections)
+        # Map 0.5 -> 0.6 (high threshold, only strong signals)
+        # Map 0.9 -> 0.3 (moderate threshold, clear emotions)
+        # Map 1.0 -> 0.2 (lower threshold, more sensitive)
+
+        # More conservative exponential mapping
+        inverted_sensitivity = 1.0 - sensitivity  # 0.9 to 0.0
+
+        # Much higher thresholds to reduce false positives
+        if sensitivity >= 0.8:
+            # Fine control in high sensitivity range
+            threshold = 0.2 + (1.0 - sensitivity) * 0.5  # 0.2 to 0.3
+        else:
+            # Exponential curve for lower sensitivities with much higher thresholds
+            threshold = 0.3 + (inverted_sensitivity ** 0.8) * 0.6  # 0.3 to 0.9
+
+        return max(0.2, min(0.9, threshold))
+
+    def _normalize_confidence_for_sensitivity(self, raw_confidence: float, sensitivity: float) -> float:
+        """Normalize confidence based on sensitivity for consistent reporting"""
+        # Scale confidence to be more meaningful relative to sensitivity
+        # Higher sensitivity should report higher confidence values
+
+        if raw_confidence <= 0:
+            return 0.0
+
+        # Apply sensitivity-based scaling
+        # At high sensitivity (1.0), boost confidence more
+        # At low sensitivity (0.1), keep confidence lower
+        sensitivity_factor = 0.5 + (sensitivity * 0.5)  # 0.55 to 1.0
+
+        normalized = min(1.0, raw_confidence * sensitivity_factor)
+
+        # Ensure minimum confidence for any detection
+        return max(0.3, normalized)
 
     def _analyze_python_features_for_emotion(self, features) -> Optional[Dict]:
         """Analyze Python OpenSMILE features for emotion detection"""
@@ -691,41 +742,47 @@ printHeader=1
             pitch_score = abs(f0_mean) if f0_mean != 0 else 0
             voice_quality_score = abs(hnr_mean) if hnr_mean != 0 else 0
 
-            # More aggressive confidence calculation for better detection
-            # Laughter often has high energy, pitch variation, and some voice irregularity
-            if energy_score > 0.05 and pitch_score > 0.05:  # Lower thresholds
-                if voice_quality_score > 0.02 or abs(jitter) > 0.005:
-                    detected_emotion = 'laughter'
-                    # Boost confidence significantly for laughter
-                    confidence = min(0.95, (energy_score + pitch_score + voice_quality_score) * 2.0)
-                else:
-                    detected_emotion = 'excitement'
-                    confidence = min(0.85, (energy_score + pitch_score) * 1.5)
+            # Much more conservative detection to avoid false positives during normal speech
+            # Laughter requires very specific acoustic characteristics
 
-            # High energy with lower pitch variation might indicate anger
-            elif energy_score > 0.08 and pitch_score < 0.03:
+            # Laughter detection: requires high energy AND significant pitch variation AND voice irregularity
+            if (energy_score > 0.15 and pitch_score > 0.1 and
+                (voice_quality_score > 0.05 or abs(jitter) > 0.01)):
+                # Additional check: laughter usually has rapid energy fluctuations
+                detected_emotion = 'laughter'
+                # Conservative confidence calculation
+                confidence = min(0.8, (energy_score + pitch_score + voice_quality_score) * 1.2)
+
+            # Excitement: high energy with moderate pitch variation but good voice quality
+            elif (energy_score > 0.2 and pitch_score > 0.08 and
+                  voice_quality_score > 0.03 and abs(jitter) < 0.008):
+                detected_emotion = 'excitement'
+                confidence = min(0.7, (energy_score + pitch_score) * 1.0)
+
+            # Anger: very high energy with low pitch variation and harsh voice quality
+            elif (energy_score > 0.25 and pitch_score < 0.05 and
+                  voice_quality_score < 0.02):
                 detected_emotion = 'anger'
-                confidence = min(0.8, energy_score * 3.0)
+                confidence = min(0.75, energy_score * 2.0)
 
-            # Any detectable energy suggests some emotion
-            elif energy_score > 0.02:
-                detected_emotion = 'excitement'  # Default to excitement for any activity
-                confidence = min(0.7, energy_score * 5.0)
+            # Default: no emotion detected for normal speech patterns
+            else:
+                detected_emotion = 'neutral'
+                confidence = 0.0
 
-            # Significant confidence boost for all detections
-            if confidence > 0.05:
-                confidence = min(1.0, confidence * 2.5)  # Much more aggressive boost
+            # Apply proper sensitivity mapping instead of aggressive boosting
+            # Map sensitivity (0.1-1.0) to detection threshold (0.05-0.8)
+            detection_threshold = self._map_sensitivity_to_threshold(self.sensitivity)
 
-            # Ensure minimum confidence for any detection
-            if confidence > 0.0:
-                confidence = max(0.3, confidence)  # Minimum 0.3 confidence
+            # Apply detection threshold
+            if confidence > detection_threshold:
+                # Apply final confidence normalization based on sensitivity
+                final_confidence = self._normalize_confidence_for_sensitivity(confidence, self.sensitivity)
 
-            # Apply sensitivity threshold
-            if confidence > self.sensitivity:
-                self.logger.info(f"OpenSMILE detected {detected_emotion} with confidence {confidence:.3f} (threshold: {self.sensitivity:.3f})")
+                self.logger.info(f"OpenSMILE detected {detected_emotion} with confidence {final_confidence:.3f} (raw: {confidence:.3f}, threshold: {detection_threshold:.3f})")
                 return {
                     'emotion': detected_emotion,
-                    'confidence': confidence,
+                    'confidence': final_confidence,
                     'features': feature_dict,
                     'type': 'opensmile_python',
                     'timestamp': datetime.now().isoformat()
@@ -733,7 +790,7 @@ printHeader=1
             else:
                 # Debug logging for failed detections (occasionally)
                 if self._debug_counter % 100 == 0:
-                    self.logger.debug(f"OpenSMILE: {detected_emotion} confidence {confidence:.3f} below threshold {self.sensitivity:.3f}")
+                    self.logger.debug(f"OpenSMILE: {detected_emotion} confidence {confidence:.3f} below threshold {detection_threshold:.3f} (sensitivity: {self.sensitivity:.3f})")
 
             return None
 

@@ -115,8 +115,9 @@ class VoskDetector:
             # Create Czech recognizer
             self.czech_recognizer = vosk.KaldiRecognizer(self.czech_model, self.sample_rate)
 
-            # Configure recognizer for better phrase detection
+            # Configure recognizer for better phrase detection (safe methods only)
             self._configure_czech_recognizer()
+            self.logger.debug("Czech recognizer initialized and configured")
 
             return True
 
@@ -143,8 +144,9 @@ class VoskDetector:
             # Create English recognizer
             self.english_recognizer = vosk.KaldiRecognizer(self.english_model, self.sample_rate)
 
-            # Configure recognizer for better phrase detection
+            # Configure recognizer for better phrase detection (safe methods only)
             self._configure_english_recognizer()
+            self.logger.debug("English recognizer initialized and configured")
 
             return True
 
@@ -153,17 +155,16 @@ class VoskDetector:
             return False
     
     def _configure_czech_recognizer(self):
-        """Configure Czech Vosk recognizer for optimal phrase detection"""
+        """Configure Czech Vosk recognizer for optimal phrase detection (safe methods only)"""
         try:
+            # Generate phrase variations for better matching (this is safe)
             phrases_for_grammar = []
             for phrase in self.czech_phrases:
                 # Add the phrase and common variations
                 phrases_for_grammar.append(phrase)
-
                 # Add variations with different punctuation
                 phrases_for_grammar.append(phrase.replace(" ", ""))
                 phrases_for_grammar.append(phrase.replace(" ", "-"))
-
                 # Add individual words for partial matching
                 words = phrase.split()
                 phrases_for_grammar.extend(words)
@@ -171,27 +172,22 @@ class VoskDetector:
             # Remove duplicates
             phrases_for_grammar = list(set(phrases_for_grammar))
 
-            # Try to set grammar (this might not work with all Vosk versions)
-            try:
-                self.logger.info("Czech Vosk recognizer configured for phrase detection")
-            except:
-                self.logger.info("Czech Vosk grammar configuration not supported, using default")
+            self.logger.info(f"Czech recognizer configured with {len(phrases_for_grammar)} phrase variations")
 
         except Exception as e:
             self.logger.error(f"Error configuring Czech Vosk recognizer: {e}")
 
     def _configure_english_recognizer(self):
-        """Configure English Vosk recognizer for optimal phrase detection"""
+        """Configure English Vosk recognizer for optimal phrase detection (safe methods only)"""
         try:
+            # Generate phrase variations for better matching (this is safe)
             phrases_for_grammar = []
             for phrase in self.english_phrases:
                 # Add the phrase and common variations
                 phrases_for_grammar.append(phrase)
-
                 # Add variations with different punctuation
                 phrases_for_grammar.append(phrase.replace(" ", ""))
                 phrases_for_grammar.append(phrase.replace(" ", "-"))
-
                 # Add individual words for partial matching
                 words = phrase.split()
                 phrases_for_grammar.extend(words)
@@ -199,11 +195,7 @@ class VoskDetector:
             # Remove duplicates
             phrases_for_grammar = list(set(phrases_for_grammar))
 
-            # Try to set grammar (this might not work with all Vosk versions)
-            try:
-                self.logger.info("English Vosk recognizer configured for phrase detection")
-            except:
-                self.logger.info("English Vosk grammar configuration not supported, using default")
+            self.logger.info(f"English recognizer configured with {len(phrases_for_grammar)} phrase variations")
 
         except Exception as e:
             self.logger.error(f"Error configuring English Vosk recognizer: {e}")
@@ -311,24 +303,28 @@ class VoskDetector:
             return [phrase]
 
 
-    
     def start_detection(self):
         """Start Vosk speech detection"""
+        self.logger.info(f"Attempting to start Vosk detection (available: {self.is_available}, running: {self.running})")
+
         if not self.is_available:
-            self.logger.warning("Cannot start Vosk detection - not available")
+            self.logger.warning(f"Cannot start Vosk detection - not available (Czech: {self.czech_available}, English: {self.english_available})")
+            self.logger.warning(f"Czech model path: {self.czech_model_path}, phrases: {len(self.czech_phrases)}")
+            self.logger.warning(f"English model path: {self.english_model_path}, phrases: {len(self.english_phrases)}")
             return False
-        
+
         if self.running:
+            self.logger.info("Vosk detection already running")
             return True
-        
+
         try:
             self.running = True
             self.detection_thread = threading.Thread(target=self._detection_loop, daemon=True)
             self.detection_thread.start()
-            
-            self.logger.info("Vosk detection started")
+
+            self.logger.info(f"Vosk detection started successfully with {len(self.all_phrases)} total phrases")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"Error starting Vosk detection: {e}")
             self.running = False
@@ -367,13 +363,18 @@ class VoskDetector:
     def process_audio(self, audio_data: np.ndarray) -> Optional[Dict]:
         """Process audio data for speech recognition"""
         try:
-            if not self.is_available or not self.running:
+            if not self.is_available:
+                self.logger.debug("Vosk process_audio called but not available")
                 return None
-            
+
+            if not self.running:
+                self.logger.debug("Vosk process_audio called but not running")
+                return None
+
             # Convert to bytes (Vosk expects 16-bit PCM)
             audio_int16 = (audio_data * 32767).astype(np.int16)
             audio_bytes = audio_int16.tobytes()
-            
+
             # Add to queue for processing
             try:
                 self.audio_queue.put(audio_bytes, block=False)
@@ -387,7 +388,7 @@ class VoskDetector:
                 return result
             except queue.Empty:
                 return None
-            
+
         except Exception as e:
             self.logger.error(f"Error processing audio: {e}")
             return None
@@ -671,14 +672,119 @@ class VoskDetector:
                 del self.phrase_variations[phrase_lower]
             self.logger.info(f"Removed activation phrase: {phrase}")
     
-    def set_confidence_threshold(self, threshold: float, log_change: bool = True):
-        """Update confidence threshold"""
-        old_threshold = self.confidence_threshold
-        self.confidence_threshold = max(0.1, min(1.0, threshold))
+    def set_confidence_threshold(self, sensitivity: float, log_change: bool = True):
+        """Update sensitivity (converts to internal confidence threshold)"""
+        old_sensitivity = 1.0 - (self.confidence_threshold - 0.1) / 0.8  # Convert back to sensitivity for comparison
 
-        if log_change and abs(old_threshold - self.confidence_threshold) > 0.001:
-            self.logger.info(f"Vosk confidence threshold updated to {self.confidence_threshold}")
-    
+        # Map sensitivity to confidence threshold (inverted)
+        # Higher sensitivity (1.0) -> Lower threshold (0.1) -> More detections
+        # Lower sensitivity (0.1) -> Higher threshold (0.9) -> Fewer detections
+        mapped_threshold = 0.1 + (1.0 - max(0.1, min(1.0, sensitivity))) * 0.8
+
+        self.confidence_threshold = mapped_threshold
+
+        if log_change and abs(sensitivity - old_sensitivity) > 0.001:
+            self.logger.info(f"Vosk sensitivity updated to {sensitivity:.3f} (confidence threshold: {self.confidence_threshold:.3f})")
+
+    def update_activation_phrases(self, czech_phrases: List[str] = None, english_phrases: List[str] = None, log_change: bool = True):
+        """Update activation phrases for both languages"""
+        try:
+            # Store old phrases for comparison
+            old_czech_phrases = self.czech_phrases.copy()
+            old_english_phrases = self.english_phrases.copy()
+
+            # Update Czech phrases if provided
+            if czech_phrases is not None:
+                # Normalize Czech phrases with proper encoding handling
+                self.czech_phrases = []
+                for phrase in czech_phrases:
+                    if phrase and phrase.strip():
+                        # Ensure proper UTF-8 encoding and normalize
+                        normalized_phrase = phrase.strip().lower()
+                        # Handle Czech characters properly
+                        normalized_phrase = self._normalize_czech_text(normalized_phrase)
+                        self.czech_phrases.append(normalized_phrase)
+
+            # Update English phrases if provided
+            if english_phrases is not None:
+                self.english_phrases = []
+                for phrase in english_phrases:
+                    if phrase and phrase.strip():
+                        normalized_phrase = phrase.strip().lower()
+                        self.english_phrases.append(normalized_phrase)
+
+            # Update combined phrase list
+            self.all_phrases = self.czech_phrases + self.english_phrases
+
+            # Regenerate phrase variations for better matching
+            self.phrase_variations = self._generate_phrase_variations()
+
+            # Update custom word corrections map (includes all phrase words automatically)
+            self.custom_word_corrections = self._build_word_corrections_map()
+
+            # Log changes if requested
+            if log_change:
+                if czech_phrases is not None and old_czech_phrases != self.czech_phrases:
+                    self.logger.info(f"Czech activation phrases updated: {len(self.czech_phrases)} phrases")
+                    self.logger.debug(f"New Czech phrases: {self.czech_phrases}")
+
+                if english_phrases is not None and old_english_phrases != self.english_phrases:
+                    self.logger.info(f"English activation phrases updated: {len(self.english_phrases)} phrases")
+                    self.logger.debug(f"New English phrases: {self.english_phrases}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error updating activation phrases: {e}")
+            return False
+
+    # Removed vocabulary update methods that could cause crashes
+    # Word corrections map is rebuilt automatically when phrases change
+
+    def _normalize_czech_text(self, text: str) -> str:
+        """Normalize Czech text for better recognition"""
+        try:
+            # Ensure proper UTF-8 encoding
+            if isinstance(text, bytes):
+                text = text.decode('utf-8')
+
+            # Convert to lowercase using Czech locale if available
+            import locale
+            try:
+                # Try to set Czech locale for proper character handling
+                locale.setlocale(locale.LC_ALL, 'cs_CZ.UTF-8')
+            except:
+                try:
+                    locale.setlocale(locale.LC_ALL, 'Czech_Czech Republic.1250')
+                except:
+                    pass  # Use default locale
+
+            # Normalize the text
+            normalized = text.lower()
+
+            # Additional Czech character normalization if needed
+            czech_char_map = {
+                'á': 'a', 'č': 'c', 'ď': 'd', 'é': 'e', 'ě': 'e',
+                'í': 'i', 'ň': 'n', 'ó': 'o', 'ř': 'r', 'š': 's',
+                'ť': 't', 'ú': 'u', 'ů': 'u', 'ý': 'y', 'ž': 'z'
+            }
+
+            # Create both original and ASCII-normalized versions for better matching
+            # Keep the original with Czech characters for primary matching
+            return normalized
+
+        except Exception as e:
+            self.logger.warning(f"Error normalizing Czech text '{text}': {e}")
+            return text.lower()
+
     def get_activation_phrases(self) -> List[str]:
-        """Get current activation phrases"""
-        return self.activation_phrases.copy()
+        """Get current activation phrases (combined Czech and English)"""
+        return self.all_phrases.copy()
+
+    def get_czech_phrases(self) -> List[str]:
+        """Get current Czech activation phrases"""
+        return self.czech_phrases.copy()
+
+    def get_english_phrases(self) -> List[str]:
+        """Get current English activation phrases"""
+        return self.english_phrases.copy()

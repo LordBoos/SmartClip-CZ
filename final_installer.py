@@ -258,17 +258,21 @@ class SmartClipInstaller:
         self.root.title("SmartClip CZ Installer v1.0")
         self.root.geometry("650x600")
         self.root.resizable(False, False)
-        
+
+        # Language selection
+        self.language = "en"  # Default to English
+        self.texts = self.get_texts()
+
         # Center window
         self.center_window()
-        
+
         # Variables
         self.progress_var = tk.DoubleVar()
-        self.status_var = tk.StringVar(value="Ready to install SmartClip CZ")
+        self.status_var = tk.StringVar(value=self.texts["ready_to_install"])
         self.path_var = tk.StringVar()
-        
-        self.setup_ui()
-        self.find_obs_directory()
+
+        # Show language selection first
+        self.show_language_selection()
     
     def center_window(self):
         """Center the window on screen"""
@@ -276,6 +280,274 @@ class SmartClipInstaller:
         x = (self.root.winfo_screenwidth() // 2) - (650 // 2)
         y = (self.root.winfo_screenheight() // 2) - (600 // 2)
         self.root.geometry(f"650x600+{x}+{y}")
+
+    def get_texts(self):
+        """Get text strings for the selected language"""
+        texts = {
+            "en": {
+                "ready_to_install": "Ready to install SmartClip CZ",
+                "title": "SmartClip CZ",
+                "subtitle": "Automatic Twitch Clip Creator for OBS Studio",
+                "version": "Version 1.0 - Standalone Installer",
+                "language_selection": "Language Selection / Výběr jazyka",
+                "choose_language": "Choose your preferred language:",
+                "english": "English",
+                "czech": "Čeština",
+                "continue": "Continue",
+                "streamlabs_warning": "⚠️ IMPORTANT: This plugin works only with regular OBS Studio, NOT with Streamlabs Desktop!\n   Even if you have Streamlabs plugin installed, use regular OBS Studio for SmartClip CZ.",
+                "features_title": "Features included:",
+                "feature_emotion": "• Emotion detection from audio (laughter, excitement, surprise, joy)",
+                "feature_phrases": "• Czech and English activation phrase recognition",
+                "feature_clips": "• Automatic Twitch clip creation with smart titles",
+                "feature_python": "• Complete Python environment with all dependencies",
+                "install_button": "Install SmartClip CZ",
+                "installation_path": "Installation Path:",
+                "browse": "Browse...",
+                "installing": "Installing...",
+                "installation_complete": "Installation Complete!",
+                "installation_failed": "Installation Failed",
+                "close": "Close",
+
+                # OAuth dialogs
+                "twitch_client_id": "Twitch Client ID",
+                "twitch_client_secret": "Twitch Client Secret (Optional)",
+                "twitch_authorization": "Twitch Authorization",
+                "oauth_redirect_url": "OAuth Redirect URL:",
+                "copy_url": "Copy URL",
+                "copied": "Copied!",
+                "next": "Next",
+                "skip": "Skip",
+                "authorize": "Authorize",
+                "success": "Success!",
+                "error": "Error",
+
+                # Post-installation
+                "setup_complete": "Setup Complete!",
+                "installation_successful": "SmartClip CZ has been installed successfully!",
+                "next_steps": "Next Steps:",
+                "step_obs": "1. Open OBS Studio",
+                "step_scripts": "2. Go to Tools → Scripts",
+                "step_add": "3. Click '+' and add the script:",
+                "step_configure": "4. Configure your Twitch credentials in the script settings",
+                "open_folder": "Open Installation Folder",
+                "finish": "Finish",
+
+                # OAuth Setup Dialog
+                "oauth_setup_title": "Twitch OAuth Setup",
+                "oauth_setup_question": "Would you like to set up Twitch OAuth credentials now?",
+                "oauth_setup_description": "This will automatically configure Twitch API access for clip creation.\nYou can also set this up later by editing the config file.",
+                "yes": "Yes",
+                "no": "No",
+
+                # OAuth Steps
+                "step1_title": "Step 1: Create Twitch Application & Get Credentials",
+                "step1_instructions": "1. In the Twitch Developer Console (opened in browser):\n• Click 'Register Your Application' or 'Create an App'\n• Name: 'SmartClip CZ' (or any name you prefer)\n• OAuth Redirect URLs: Use the button below to copy the URL\n• Category: 'Application Integration'\n• Type: Select 'Private (Düverný)' - required for Client Secret!\n• Click 'Create'\n\n2. From your application details:\n• Copy the 'Client ID' (always visible)\n3. Paste your Client ID below to continue:",
+                "step2_title": "Step 2: Client Secret (Recommended for Auto-Refresh)",
+                "step2_instructions": "For automatic token refresh (prevents expiration issues):\n\n1. In your Twitch application details:\n• Click 'New Secret' button\n• Copy the Client Secret immediately (shown only once!)\n• Paste it below\n\n2. If you skip this step:\n• Tokens will expire every ~4 hours\n• You'll need to manually refresh them",
+                "step3_title": "Step 2: Authorize SmartClip CZ",
+                "step3_instructions": "1. Click 'Open Authorization Page' below\n2. In your browser, click 'Authorize' to grant permissions\n3. Wait for the success message\n4. Return to this installer",
+                "continue": "Continue",
+                "skip_oauth": "Skip OAuth Setup",
+                "not_recommended": "Skip (Not Recommended)",
+                "open_auth_page": "Open Authorization Page",
+                "waiting_auth": "Waiting for authorization... ({} remaining)",
+                "paste_client_id": "Paste your Client ID here:",
+                "paste_client_secret": "Paste your Client Secret below to continue:",
+
+                # Post-installation dialog
+                "installation_complete_title": "SmartClip CZ Installation Complete!",
+                "installation_completed_successfully": "Installation completed successfully!",
+                "copy_installation_path_instruction": "Use the 'Copy Installation Path' button below when loading the script in OBS.",
+                "obs_python_configuration": "OBS Python Configuration:",
+                "obs_config_step1": "1. Open OBS Studio",
+                "obs_config_step2": "2. Go to Tools -> Scripts",
+                "obs_config_step3": "3. Click the Python Settings tab",
+                "obs_config_step4": "4. Click 'Copy Python Path' button below, then paste the path",
+                "obs_config_step5": "5. Click OK to apply settings",
+                "loading_script": "Loading the Script:",
+                "script_step1": "1. In Scripts tab, click '+' (Add Scripts) button",
+                "script_step2": "2. Click 'Copy Installation Path' button below, then paste in file dialog to navigate",
+                "script_step3": "3. Select 'smartclip_cz.py' file",
+                "script_step4": "4. Click 'Open' to load the script",
+                "package_installation": "Package Installation:",
+                "package_success": "SmartClip CZ has been installed successfully!",
+                "package_step1": "1. All packages have been installed to the virtual environment",
+                "package_step2": "2. All SmartClip files are ready to use",
+                "package_step3": "3. If any packages failed, use the backup installer in the folder",
+                "copy_installation_path": "Copy Installation Path",
+                "copy_python_path": "Copy Python Path",
+                "open_installation_folder": "Open Installation Folder",
+                "close": "Close"
+            },
+            "cs": {
+                "ready_to_install": "Připraven k instalaci SmartClip CZ",
+                "title": "SmartClip CZ",
+                "subtitle": "Automatický tvůrce Twitch klipů pro OBS Studio",
+                "version": "Verze 1.0 - Samostatný instalátor",
+                "language_selection": "Language Selection / Výběr jazyka",
+                "choose_language": "Vyberte preferovaný jazyk:",
+                "english": "English",
+                "czech": "Čeština",
+                "continue": "Pokračovat",
+                "streamlabs_warning": "⚠️ DŮLEŽITÉ: Tento plugin funguje pouze s běžným OBS Studio, NE se Streamlabs Desktop!\n   I když máte nainstalovaný Streamlabs plugin, použijte běžné OBS Studio pro SmartClip CZ.",
+                "features_title": "Zahrnuté funkce:",
+                "feature_emotion": "• Detekce emocí ze zvuku (smích, vzrušení, překvapení, radost)",
+                "feature_phrases": "• Rozpoznávání aktivačních frází v češtině a angličtině",
+                "feature_clips": "• Automatické vytváření Twitch klipů s chytrými názvy",
+                "feature_python": "• Kompletní Python prostředí se všemi závislostmi",
+                "install_button": "Instalovat SmartClip CZ",
+                "installation_path": "Cesta instalace:",
+                "browse": "Procházet...",
+                "installing": "Instaluji...",
+                "installation_complete": "Instalace dokončena!",
+                "installation_failed": "Instalace selhala",
+                "close": "Zavřít",
+
+                # OAuth dialogs
+                "twitch_client_id": "Twitch Client ID",
+                "twitch_client_secret": "Twitch Client Secret (Volitelné)",
+                "twitch_authorization": "Twitch Autorizace",
+                "oauth_redirect_url": "OAuth Redirect URL:",
+                "copy_url": "Kopírovat URL",
+                "copied": "Zkopírováno!",
+                "next": "Další",
+                "skip": "Přeskočit",
+                "authorize": "Autorizovat",
+                "success": "Úspěch!",
+                "error": "Chyba",
+
+                # Post-installation
+                "setup_complete": "Nastavení dokončeno!",
+                "installation_successful": "SmartClip CZ byl úspěšně nainstalován!",
+                "next_steps": "Další kroky:",
+                "step_obs": "1. Otevřete OBS Studio",
+                "step_scripts": "2. Jděte do Nástroje → Skripty",
+                "step_add": "3. Klikněte na '+' a přidejte skript:",
+                "step_configure": "4. Nakonfigurujte své Twitch přihlašovací údaje v nastavení skriptu",
+                "open_folder": "Otevřít složku instalace",
+                "finish": "Dokončit",
+
+                # OAuth Setup Dialog
+                "oauth_setup_title": "Nastavení Twitch OAuth",
+                "oauth_setup_question": "Chcete nyní nastavit Twitch OAuth přihlašovací údaje?",
+                "oauth_setup_description": "Toto automaticky nakonfiguruje přístup k Twitch API pro vytváření klipů.\nMůžete to také nastavit později úpravou konfiguračního souboru.",
+                "yes": "Ano",
+                "no": "Ne",
+
+                # OAuth Steps
+                "step1_title": "Krok 1: Vytvořte Twitch aplikaci a získejte přihlašovací údaje",
+                "step1_instructions": "1. V Twitch Developer Console (otevřeno v prohlížeči):\n• Klikněte na 'Register Your Application' nebo 'Create an App'\n• Název: 'SmartClip CZ' (nebo jakýkoli název)\n• OAuth Redirect URLs: Použijte tlačítko níže pro zkopírování URL\n• Kategorie: 'Application Integration'\n• Typ: Vyberte 'Private (Düverný)' - vyžadováno pro Client Secret!\n• Klikněte na 'Create'\n\n2. Z detailů vaší aplikace:\n• Zkopírujte 'Client ID' (vždy viditelné)\n3. Vložte váš Client ID níže pro pokračování:",
+                "step2_title": "Krok 2: Client Secret (Doporučeno pro auto-obnovení)",
+                "step2_instructions": "Pro automatické obnovení tokenu (zabraňuje problémům s vypršením):\n\n1. V detailech vaší Twitch aplikace:\n• Klikněte na tlačítko 'New Secret'\n• Okamžitě zkopírujte Client Secret (zobrazen pouze jednou!)\n• Vložte jej níže\n\n2. Pokud tento krok přeskočíte:\n• Tokeny vyprší každé ~4 hodiny\n• Budete je muset ručně obnovovat",
+                "step3_title": "Krok 2: Autorizujte SmartClip CZ",
+                "step3_instructions": "1. Klikněte na 'Otevřít autorizační stránku' níže\n2. V prohlížeči klikněte na 'Authorize' pro udělení oprávnění\n3. Počkejte na zprávu o úspěchu\n4. Vraťte se k tomuto instalátoru",
+                "continue": "Pokračovat",
+                "skip_oauth": "Přeskočit OAuth nastavení",
+                "not_recommended": "Přeskočit (Nedoporučeno)",
+                "open_auth_page": "Otevřít autorizační stránku",
+                "waiting_auth": "Čekání na autorizaci... (zbývá {})",
+                "paste_client_id": "Vložte váš Client ID zde:",
+                "paste_client_secret": "Vložte váš Client Secret níže pro pokračování:",
+
+                # Post-installation dialog
+                "installation_complete_title": "Instalace SmartClip CZ dokončena!",
+                "installation_completed_successfully": "Instalace byla úspěšně dokončena!",
+                "copy_installation_path_instruction": "Použijte tlačítko 'Kopírovat cestu instalace' níže při načítání skriptu v OBS.",
+                "obs_python_configuration": "Konfigurace Python v OBS:",
+                "obs_config_step1": "1. Otevřete OBS Studio",
+                "obs_config_step2": "2. Jděte do Nástroje -> Skripty",
+                "obs_config_step3": "3. Klikněte na záložku Python Settings",
+                "obs_config_step4": "4. Klikněte na tlačítko 'Kopírovat Python cestu' níže, pak vložte cestu",
+                "obs_config_step5": "5. Klikněte OK pro aplikování nastavení",
+                "loading_script": "Načítání skriptu:",
+                "script_step1": "1. V záložce Skripty klikněte na '+' (Přidat skripty)",
+                "script_step2": "2. Klikněte na tlačítko 'Kopírovat cestu instalace' níže, pak vložte do dialogu pro navigaci",
+                "script_step3": "3. Vyberte soubor 'smartclip_cz.py'",
+                "script_step4": "4. Klikněte 'Otevřít' pro načtení skriptu",
+                "package_installation": "Instalace balíčků:",
+                "package_success": "SmartClip CZ byl úspěšně nainstalován!",
+                "package_step1": "1. Všechny balíčky byly nainstalovány do virtuálního prostředí",
+                "package_step2": "2. Všechny SmartClip soubory jsou připraveny k použití",
+                "package_step3": "3. Pokud některé balíčky selhaly, použijte záložní instalátor ve složce",
+                "copy_installation_path": "Kopírovat cestu instalace",
+                "copy_python_path": "Kopírovat Python cestu",
+                "open_installation_folder": "Otevřít složku instalace",
+                "close": "Zavřít"
+            }
+        }
+        return texts[self.language]
+
+    def show_language_selection(self):
+        """Show language selection dialog"""
+        lang_dialog = tk.Toplevel(self.root)
+        lang_dialog.title("Language Selection / Výběr jazyka")
+        lang_dialog.geometry("400x250")
+        lang_dialog.transient(self.root)
+        lang_dialog.grab_set()
+        lang_dialog.attributes("-topmost", True)
+
+        # Center the dialog
+        lang_dialog.update_idletasks()
+        x = (lang_dialog.winfo_screenwidth() // 2) - (400 // 2)
+        y = (lang_dialog.winfo_screenheight() // 2) - (250 // 2)
+        lang_dialog.geometry(f"400x350+{x}+{y}")
+
+        # Title
+        title_label = tk.Label(lang_dialog, text="Language Selection / Výběr jazyka",
+                              font=("Arial", 14, "bold"))
+        title_label.pack(pady=20)
+
+        # Instructions
+        instr_label = tk.Label(lang_dialog, text="Choose your preferred language:\nVyberte preferovaný jazyk:",
+                              font=("Arial", 11), justify=tk.CENTER)
+        instr_label.pack(pady=10)
+
+        # Language selection
+        lang_var = tk.StringVar(value="en")
+
+        lang_frame = tk.Frame(lang_dialog)
+        lang_frame.pack(pady=20)
+
+        tk.Radiobutton(lang_frame, text="English", variable=lang_var, value="en",
+                      font=("Arial", 12)).pack(pady=5)
+        tk.Radiobutton(lang_frame, text="Čeština", variable=lang_var, value="cs",
+                      font=("Arial", 12)).pack(pady=5)
+
+        def continue_with_language():
+            try:
+                self.language = lang_var.get()
+                self.texts = self.get_texts()
+                self.status_var.set(self.texts["ready_to_install"])
+                lang_dialog.destroy()
+                self.setup_ui()
+                self.find_obs_directory()
+            except Exception as e:
+                print(f"Language selection error: {e}")
+                lang_dialog.destroy()
+                # Fallback to English
+                self.language = "en"
+                self.texts = self.get_texts()
+                self.setup_ui()
+                self.find_obs_directory()
+
+        # Make button more prominent and ensure it works
+        button_frame = tk.Frame(lang_dialog)
+        button_frame.pack(pady=20)
+
+        continue_btn = tk.Button(button_frame, text="Continue / Pokračovat",
+                               command=continue_with_language,
+                               bg="#27ae60", fg="white", font=("Arial", 12, "bold"),
+                               width=25, height=2, relief="raised", bd=3)
+        continue_btn.pack()
+
+        # Also allow Enter key to continue
+        def on_enter(event):
+            continue_with_language()
+
+        lang_dialog.bind('<Return>', on_enter)
+        continue_btn.focus_set()
+
+        lang_dialog.wait_window()
     
     def setup_ui(self):
         """Setup the installer UI"""
@@ -285,20 +557,20 @@ class SmartClipInstaller:
         header_frame.pack_propagate(False)
         
         # Title
-        title_label = tk.Label(header_frame, text="SmartClip CZ", 
-                              font=("Arial", 24, "bold"), 
+        title_label = tk.Label(header_frame, text=self.texts["title"],
+                              font=("Arial", 24, "bold"),
                               fg="white", bg="#2c3e50")
         title_label.pack(pady=(20, 5))
-        
+
         # Subtitle
-        subtitle_label = tk.Label(header_frame, text="Automatic Twitch Clip Creator for OBS Studio", 
-                                 font=("Arial", 12), 
+        subtitle_label = tk.Label(header_frame, text=self.texts["subtitle"],
+                                 font=("Arial", 12),
                                  fg="#ecf0f1", bg="#2c3e50")
         subtitle_label.pack()
-        
+
         # Version
-        version_label = tk.Label(header_frame, text="Version 1.0 - Standalone Installer", 
-                                font=("Arial", 9), 
+        version_label = tk.Label(header_frame, text=self.texts["version"],
+                                font=("Arial", 9),
                                 fg="#bdc3c7", bg="#2c3e50")
         version_label.pack(pady=(5, 0))
         
@@ -307,13 +579,15 @@ class SmartClipInstaller:
         content_frame.pack(fill=tk.BOTH, expand=True)
         
         # Description
-        desc_text = """This installer will set up SmartClip CZ for OBS Studio with all required components.
+        desc_text = f"""This installer will set up SmartClip CZ for OBS Studio with all required components.
 
-Features included:
-• Emotion detection from audio (laughter, excitement, surprise, joy)
-• Czech and English activation phrase recognition
-• Automatic Twitch clip creation with smart titles
-• Complete Python environment with all dependencies"""
+{self.texts["streamlabs_warning"]}
+
+{self.texts["features_title"]}
+{self.texts["feature_emotion"]}
+{self.texts["feature_phrases"]}
+{self.texts["feature_clips"]}
+{self.texts["feature_python"]}"""
 
         desc_label = tk.Label(content_frame, text=desc_text,
                              justify=tk.LEFT, wraplength=580,
@@ -321,7 +595,7 @@ Features included:
         desc_label.pack(pady=(0, 15))
         
         # Installation path section
-        path_section = tk.LabelFrame(content_frame, text="Installation Location", 
+        path_section = tk.LabelFrame(content_frame, text=self.texts["installation_path"],
                                     font=("Arial", 10, "bold"), fg="#2c3e50")
         path_section.pack(fill=tk.X, pady=(0, 20))
         
@@ -332,7 +606,7 @@ Features included:
                                   font=("Arial", 9), relief=tk.SOLID, bd=1)
         self.path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        browse_btn = tk.Button(path_inner, text="Browse...", 
+        browse_btn = tk.Button(path_inner, text=self.texts["browse"],
                               command=self.browse_path, width=12,
                               relief=tk.SOLID, bd=1)
         browse_btn.pack(side=tk.RIGHT, padx=(8, 0))
@@ -363,7 +637,7 @@ Features included:
         button_frame = tk.Frame(button_section)
         button_frame.pack(expand=True)
 
-        self.install_btn = tk.Button(button_frame, text="Install SmartClip CZ",
+        self.install_btn = tk.Button(button_frame, text=self.texts["install_button"],
                                     command=self.start_installation,
                                     bg="#27ae60", fg="white",
                                     font=("Arial", 12, "bold"),
@@ -372,7 +646,7 @@ Features included:
                                     cursor="hand2")
         self.install_btn.pack(side=tk.LEFT, padx=(0, 15))
 
-        self.close_btn = tk.Button(button_frame, text="Close",
+        self.close_btn = tk.Button(button_frame, text=self.texts["close"],
                                   command=self.root.quit,
                                   width=15, height=2,
                                   relief=tk.SOLID, bd=1)
@@ -415,7 +689,7 @@ Features included:
     
     def start_installation(self):
         """Start installation in separate thread"""
-        self.install_btn.config(state=tk.DISABLED, text="Installing...", bg="#95a5a6")
+        self.install_btn.config(state=tk.DISABLED, text=self.texts["installing"], bg="#95a5a6")
         thread = threading.Thread(target=self.run_installation)
         thread.daemon = True
         thread.start()
@@ -462,7 +736,7 @@ Features included:
             error_msg = f"Installation failed: {str(e)}"
             messagebox.showerror("Installation Error", error_msg)
             self.status_var.set(error_msg)
-            self.install_btn.config(state=tk.NORMAL, text="Install SmartClip CZ", bg="#27ae60")
+            self.install_btn.config(state=tk.NORMAL, text=self.texts["install_button"], bg="#27ae60")
     
     def get_startup_info(self):
         """Get startup info to hide subprocess windows"""
@@ -1585,10 +1859,8 @@ Features included:
             # Check if user wants to setup OAuth now
             log_oauth("Showing OAuth setup confirmation dialog...")
             setup_oauth = messagebox.askyesno(
-                "Twitch OAuth Setup",
-                "Would you like to set up Twitch OAuth credentials now?\n\n"
-                "This will automatically configure Twitch API access for clip creation.\n"
-                "You can also set this up later by editing the config file."
+                self.texts["oauth_setup_title"],
+                f"{self.texts['oauth_setup_question']}\n\n{self.texts['oauth_setup_description']}"
             )
             log_oauth(f"User OAuth setup choice: {setup_oauth}")
 
@@ -1613,33 +1885,52 @@ Features included:
 
             log_oauth("Creating Client ID input dialog...")
             client_id_dialog = tk.Toplevel(self.root)
-            client_id_dialog.title("Twitch Client ID")
-            client_id_dialog.geometry("600x450")
+            client_id_dialog.title(self.texts["twitch_client_id"])
+            client_id_dialog.geometry("700x550")
             client_id_dialog.transient(self.root)
             client_id_dialog.grab_set()
+            client_id_dialog.attributes("-topmost", True)
             log_oauth("Client ID dialog created and configured")
 
             # Instructions for Client ID
             instructions = tk.Label(client_id_dialog,
-                text="Step 1: Create Twitch Application & Get Credentials",
+                text=self.texts["step1_title"],
                 font=("Arial", 14, "bold"))
             instructions.pack(pady=10)
 
-            steps_text = ("1. In the Twitch Developer Console (opened in browser):\n" +
-                         "   • Click 'Register Your Application' or 'Create an App'\n" +
-                         "   • Name: 'SmartClip CZ' (or any name you prefer)\n" +
-                         "   • OAuth Redirect URLs: 'http://localhost:3000' (without / at the end!)\n" +
-                         "   • Category: 'Application Integration'\n" +
-                         "   • Click 'Create'\n\n" +
-                         "2. From your application details:\n" +
-                         "   • Copy the 'Client ID' (always visible)\n" +
-                         "3. Paste your Client ID below to continue:")
+            steps_text = self.texts["step1_instructions"]
 
-            steps_label = tk.Label(client_id_dialog, text=steps_text, justify=tk.LEFT, wraplength=550)
+            steps_label = tk.Label(client_id_dialog, text=steps_text, justify=tk.LEFT, wraplength=650)
             steps_label.pack(pady=10, padx=20)
 
+            # OAuth Redirect URL copy section
+            oauth_frame = tk.Frame(client_id_dialog)
+            oauth_frame.pack(pady=10)
+
+            tk.Label(oauth_frame, text="OAuth Redirect URL:", font=("Arial", 10, "bold")).pack()
+
+            url_frame = tk.Frame(oauth_frame)
+            url_frame.pack(pady=5)
+
+            oauth_url = "http://localhost:3000"
+            url_label = tk.Label(url_frame, text=oauth_url, font=("Arial", 10), bg="white", relief="sunken", padx=10, pady=5)
+            url_label.pack(side=tk.LEFT, padx=(0, 5))
+
+            def copy_oauth_url():
+                try:
+                    client_id_dialog.clipboard_clear()
+                    client_id_dialog.clipboard_append(oauth_url)
+                    copy_button.config(text=self.texts["copied"], bg="#27ae60")
+                    client_id_dialog.after(2000, lambda: copy_button.config(text=self.texts["copy_url"], bg="#3498db"))
+                except Exception as e:
+                    messagebox.showerror("Copy Error", f"Failed to copy URL: {e}")
+
+            copy_button = tk.Button(url_frame, text=self.texts["copy_url"], command=copy_oauth_url,
+                                  bg="#3498db", fg="white", font=("Arial", 9), width=10)
+            copy_button.pack(side=tk.LEFT)
+
             # Client ID input
-            tk.Label(client_id_dialog, text="Paste your Client ID here:", font=("Arial", 10, "bold")).pack(pady=(20,5))
+            tk.Label(client_id_dialog, text=self.texts["paste_client_id"], font=("Arial", 10, "bold")).pack(pady=(20,5))
             client_id_var = tk.StringVar()
             client_id_entry = tk.Entry(client_id_dialog, textvariable=client_id_var, width=60, font=("Arial", 10))
             client_id_entry.pack(pady=5)
@@ -1663,8 +1954,8 @@ Features included:
                 client_id_var.set("")
                 client_id_dialog.destroy()
 
-            tk.Button(button_frame, text="Continue", command=continue_oauth, bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=12, height=2).pack(side=tk.LEFT, padx=5)
-            tk.Button(button_frame, text="Skip OAuth Setup", command=skip_oauth, font=("Arial", 10), width=15, height=2).pack(side=tk.LEFT, padx=5)
+            tk.Button(button_frame, text=self.texts["continue"], command=continue_oauth, bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=12, height=2).pack(side=tk.LEFT, padx=5)
+            tk.Button(button_frame, text=self.texts["skip_oauth"], command=skip_oauth, font=("Arial", 10), width=18, height=2).pack(side=tk.LEFT, padx=5)
 
             # Wait for dialog
             log_oauth("Waiting for user input on Client ID dialog...")
@@ -1684,26 +1975,19 @@ Features included:
             self.update_progress(77, "Collecting Client Secret for token refresh...")
 
             client_secret_dialog = tk.Toplevel(self.root)
-            client_secret_dialog.title("Twitch Client Secret (Optional)")
-            client_secret_dialog.geometry("600x400")
+            client_secret_dialog.title(self.texts["twitch_client_secret"])
+            client_secret_dialog.geometry("700x500")
             client_secret_dialog.transient(self.root)
             client_secret_dialog.grab_set()
+            client_secret_dialog.attributes("-topmost", True)
 
             # Instructions for Client Secret
             instructions = tk.Label(client_secret_dialog,
-                text="Step 2: Client Secret (Recommended for Auto-Refresh)",
+                text=self.texts["step2_title"],
                 font=("Arial", 14, "bold"))
             instructions.pack(pady=10)
 
-            secret_text = ("For automatic token refresh (prevents expiration issues):\n\n" +
-                          "1. In your Twitch application details:\n" +
-                          "   • Click 'New Secret' button\n" +
-                          "   • Copy the Client Secret immediately (shown only once!)\n" +
-                          "   • Paste it below\n\n" +
-                          "2. If you skip this step:\n" +
-                          "   • Tokens will expire every ~4 hours\n" +
-                          "   • You'll need to manually refresh them\n\n" +
-                          "Paste your Client Secret below to continue:")
+            secret_text = f"{self.texts['step2_instructions']}\n\n{self.texts['paste_client_secret']}"
 
             secret_label = tk.Label(client_secret_dialog, text=secret_text, justify=tk.LEFT, wraplength=550)
             secret_label.pack(pady=10, padx=20)
@@ -1727,8 +2011,8 @@ Features included:
                 client_secret_var.set("")
                 client_secret_dialog.destroy()
 
-            tk.Button(secret_button_frame, text="Continue", command=continue_with_secret, bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=12, height=2).pack(side=tk.LEFT, padx=5)
-            tk.Button(secret_button_frame, text="Skip (Not Recommended)", command=skip_secret, font=("Arial", 10), width=20, height=2).pack(side=tk.LEFT, padx=5)
+            tk.Button(secret_button_frame, text=self.texts["continue"], command=continue_with_secret, bg="#27ae60", fg="white", font=("Arial", 10, "bold"), width=12, height=2).pack(side=tk.LEFT, padx=5)
+            tk.Button(secret_button_frame, text=self.texts["not_recommended"], command=skip_secret, font=("Arial", 10), width=22, height=2).pack(side=tk.LEFT, padx=5)
 
             # Wait for dialog
             log_oauth("Waiting for user input on Client Secret dialog...")
@@ -1939,20 +2223,18 @@ Features included:
                 # Show authorization dialog
                 log_token("Creating Twitch authorization dialog...")
                 auth_dialog = tk.Toplevel(self.root)
-                auth_dialog.title("Twitch Authorization")
-                auth_dialog.geometry("500x300")
+                auth_dialog.title(self.texts["twitch_authorization"])
+                auth_dialog.geometry("600x400")
                 auth_dialog.transient(self.root)
                 auth_dialog.grab_set()
+                auth_dialog.attributes("-topmost", True)
                 log_token("Authorization dialog created and configured")
 
-                tk.Label(auth_dialog, text="Step 2: Authorize SmartClip CZ",
+                tk.Label(auth_dialog, text=self.texts["step3_title"],
                         font=("Arial", 14, "bold")).pack(pady=10)
 
                 tk.Label(auth_dialog,
-                        text="1. Click 'Open Authorization Page' below\n" +
-                             "2. In your browser, click 'Authorize' to grant permissions\n" +
-                             "3. Wait for the success message\n" +
-                             "4. Return to this installer",
+                        text=self.texts["step3_instructions"],
                         justify=tk.LEFT).pack(pady=10, padx=20)
 
                 def open_auth():
@@ -1965,11 +2247,11 @@ Features included:
                         log_token(f"✗ Failed to open browser: {e}")
                         messagebox.showerror("Error", f"Could not open browser. Please visit:\n{oauth_url}")
 
-                tk.Button(auth_dialog, text="Open Authorization Page",
+                tk.Button(auth_dialog, text=self.texts["open_auth_page"],
                          command=open_auth, bg="#9146ff", fg="white",
                          font=("Arial", 12, "bold")).pack(pady=10)
 
-                status_label = tk.Label(auth_dialog, text="Waiting for authorization...",
+                status_label = tk.Label(auth_dialog, text=self.texts["waiting_auth"].format("300s"),
                                        font=("Arial", 10))
                 status_label.pack(pady=10)
 
@@ -2028,7 +2310,7 @@ Features included:
 
                         # Update progress
                         remaining = int(timeout_seconds - elapsed)
-                        status_label.config(text=f"Waiting for authorization... ({remaining}s remaining)")
+                        status_label.config(text=self.texts["waiting_auth"].format(f"{remaining}s"))
                         log_token(f"Waiting... {remaining}s remaining")
 
                         # Schedule next check
@@ -2226,7 +2508,7 @@ Features included:
 
         # Create custom dialog instead of messagebox for clickable elements
         completion_dialog = tk.Toplevel(self.root)
-        completion_dialog.title("Installation Complete")
+        completion_dialog.title(self.texts["installation_complete"])
         completion_dialog.geometry("700x600")
         completion_dialog.transient(self.root)
         completion_dialog.grab_set()
@@ -2236,7 +2518,7 @@ Features included:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # Title
-        title_label = tk.Label(main_frame, text="SmartClip CZ Installation Complete!",
+        title_label = tk.Label(main_frame, text=self.texts["installation_complete_title"],
                               font=("Arial", 16, "bold"), fg="#27ae60")
         title_label.pack(pady=(0, 20))
 
@@ -2244,21 +2526,21 @@ Features included:
         path_frame = tk.Frame(main_frame)
         path_frame.pack(fill=tk.X, pady=(0, 15))
 
-        tk.Label(path_frame, text="Installation completed successfully!", font=("Arial", 12, "bold"), fg="#27ae60").pack(anchor=tk.W)
-        tk.Label(path_frame, text="Use the 'Copy Installation Path' button below when loading the script in OBS.", font=("Arial", 10)).pack(anchor=tk.W, pady=(5, 0))
+        tk.Label(path_frame, text=self.texts["installation_completed_successfully"], font=("Arial", 12, "bold"), fg="#27ae60").pack(anchor=tk.W)
+        tk.Label(path_frame, text=self.texts["copy_installation_path_instruction"], font=("Arial", 10)).pack(anchor=tk.W, pady=(5, 0))
 
         # OBS Configuration section
         obs_frame = tk.Frame(main_frame)
         obs_frame.pack(fill=tk.X, pady=(0, 15))
 
-        tk.Label(obs_frame, text="OBS Python Configuration:",
+        tk.Label(obs_frame, text=self.texts["obs_python_configuration"],
                 font=("Arial", 12, "bold")).pack(anchor=tk.W)
 
-        obs_text = f"""1. Open OBS Studio
-2. Go to Tools -> Scripts
-3. Click the Python Settings tab
-4. Click 'Copy Python Path' button below, then paste the path
-5. Click OK to apply settings"""
+        obs_text = f"""{self.texts["obs_config_step1"]}
+{self.texts["obs_config_step2"]}
+{self.texts["obs_config_step3"]}
+{self.texts["obs_config_step4"]}
+{self.texts["obs_config_step5"]}"""
 
         tk.Label(obs_frame, text=obs_text, justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 2))
 
@@ -2266,13 +2548,13 @@ Features included:
         script_frame = tk.Frame(main_frame)
         script_frame.pack(fill=tk.X, pady=(0, 15))
 
-        tk.Label(script_frame, text="Loading the Script:",
+        tk.Label(script_frame, text=self.texts["loading_script"],
                 font=("Arial", 12, "bold")).pack(anchor=tk.W)
 
-        script_text = f"""1. In Scripts tab, click '+' (Add Scripts) button
-2. Click 'Copy Installation Path' button below, then paste in file dialog to navigate
-3. Select 'smartclip_cz.py' file
-4. Click 'Open' to load the script"""
+        script_text = f"""{self.texts["script_step1"]}
+{self.texts["script_step2"]}
+{self.texts["script_step3"]}
+{self.texts["script_step4"]}"""
 
         tk.Label(script_frame, text=script_text, justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 0))
 
@@ -2280,13 +2562,13 @@ Features included:
         package_frame = tk.Frame(main_frame)
         package_frame.pack(fill=tk.X, pady=(0, 15))
 
-        tk.Label(package_frame, text="Package Installation:",
+        tk.Label(package_frame, text=self.texts["package_installation"],
                 font=("Arial", 12, "bold")).pack(anchor=tk.W)
 
-        package_text = """SmartClip CZ has been installed successfully!
-1. All packages have been installed to the virtual environment
-2. All SmartClip files are ready to use
-3. If any packages failed, use the backup installer in the folder"""
+        package_text = f"""{self.texts["package_success"]}
+{self.texts["package_step1"]}
+{self.texts["package_step2"]}
+{self.texts["package_step3"]}"""
 
         tk.Label(package_frame, text=package_text, justify=tk.LEFT).pack(anchor=tk.W, pady=(5, 0))
 
@@ -2294,24 +2576,24 @@ Features included:
         button_frame = tk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=(20, 0))
 
-        tk.Button(button_frame, text="Copy Installation Path",
+        tk.Button(button_frame, text=self.texts["copy_installation_path"],
                  command=lambda: self.copy_to_clipboard(install_path),
                  bg="#3498db", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
 
-        tk.Button(button_frame, text="Copy Python Path",
+        tk.Button(button_frame, text=self.texts["copy_python_path"],
                  command=lambda: self.copy_to_clipboard(python_folder),
                  bg="#9b59b6", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
 
-        tk.Button(button_frame, text="Open Installation Folder",
+        tk.Button(button_frame, text=self.texts["open_installation_folder"],
                  command=lambda: self.open_folder(install_path),
                  bg="#e67e22", fg="white", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=(0, 10))
 
-        tk.Button(button_frame, text="Close",
+        tk.Button(button_frame, text=self.texts["close"],
                  command=lambda: [completion_dialog.destroy(), self.root.quit()],
                  bg="#27ae60", fg="white", font=("Arial", 10, "bold")).pack(side=tk.RIGHT)
 
         # Update main installer buttons
-        self.close_btn.config(text="Close", command=self.root.quit)
+        self.close_btn.config(text=self.texts["close"], command=self.root.quit)
         self.install_btn.config(text="Completed", bg="#27ae60", state=tk.DISABLED)
 
     def open_folder(self, path):

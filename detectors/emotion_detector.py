@@ -359,7 +359,12 @@ class EmotionDetector:
             for emotion_type in self.enabled_emotions:
                 confidence = self._calculate_emotion_confidence(emotion_type, features)
                 
-                if confidence > best_confidence and confidence > self.sensitivity:
+                # Map sensitivity to detection threshold (inverted)
+                # Higher sensitivity (1.0) -> Lower threshold (0.1) -> More detections
+                # Lower sensitivity (0.1) -> Higher threshold (0.9) -> Fewer detections
+                detection_threshold = 0.1 + (1.0 - self.sensitivity) * 0.8
+
+                if confidence > best_confidence and confidence > detection_threshold:
                     best_confidence = confidence
                     best_emotion = emotion_type
             
@@ -515,7 +520,9 @@ class EmotionDetector:
         self.sensitivity = max(0.1, min(1.0, sensitivity))
 
         if log_change and abs(old_sensitivity - self.sensitivity) > 0.001:
-            self.logger.info(f"Emotion sensitivity updated to {self.sensitivity}")
+            # Calculate the detection threshold for logging
+            detection_threshold = 0.1 + (1.0 - self.sensitivity) * 0.8
+            self.logger.info(f"Basic emotion sensitivity updated to {self.sensitivity:.3f} (detection threshold: {detection_threshold:.3f})")
     
     def get_enabled_emotions(self) -> List[str]:
         """Get list of enabled emotions"""

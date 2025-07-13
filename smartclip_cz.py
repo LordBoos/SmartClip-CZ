@@ -115,6 +115,9 @@ class SmartClipCZ:
         
         # Setup logging
         self.setup_logging()
+
+        # Initialize language support
+        self.texts = self.get_texts()
         
     def setup_logging(self):
         """Setup logging for the plugin"""
@@ -180,6 +183,97 @@ class SmartClipCZ:
             logger = logging.getLogger(logger_name)
             logger.setLevel(level)
 
+    def get_texts(self):
+        """Get text strings for the selected language"""
+        language = self.config.get("language", "en")
+        texts = {
+            "en": {
+                # UI Labels
+                "twitch_setup": "Twitch Setup",
+                "audio_sources": "Audio Sources",
+                "detection_settings": "Detection Settings",
+                "activation_phrases": "Activation Phrases",
+                "advanced_options": "Advanced Options",
+                "debugging": "Debugging",
+                "tools_testing": "Tools & Testing",
+
+                # Buttons
+                "start_detection": "🎬 Start Detection",
+                "stop_detection": "⏹️ Stop Detection",
+                "reload_config": "🔄 Reload Configuration",
+                "show_statistics": "📊 Show Statistics",
+                "test_detection": "🧪 Test Detection",
+                "force_token_refresh": "🔄 Force Token Refresh (Debug)",
+                "show_confidence_widget": "📈 Show Live Confidence Widget (Disabled)",
+
+                # Settings
+                "enable_debug_logging": "🐛 Enable Debug Logging",
+                "enable_quality_scoring": "⭐ Enable Quality Scoring",
+                "auto_start_stop": "🚀 Auto-start/stop Detection with Streaming",
+                "language_setting": "🌐 Language / Jazyk",
+
+                # Twitch Setup
+                "client_id": "Client ID:",
+                "oauth_token": "OAuth Token:",
+                "broadcaster_id": "Broadcaster ID:",
+                "client_secret": "Client Secret (Optional):",
+                "refresh_token": "Refresh Token (Optional):",
+
+                # Audio Sources
+                "microphone_source": "Microphone Source:",
+                "voice_chat_source": "Voice Chat Source:",
+
+                # Detection Settings
+                "basic_emotion_sensitivity": "Basic Emotion Sensitivity:",
+                "opensmile_sensitivity": "OpenSMILE Sensitivity:",
+                "vosk_sensitivity": "Vosk Sensitivity:",
+                "clip_duration": "Clip Duration (seconds):"
+            },
+            "cs": {
+                # UI Labels
+                "twitch_setup": "Nastavení Twitch",
+                "audio_sources": "Zdroje zvuku",
+                "detection_settings": "Nastavení detekce",
+                "activation_phrases": "Aktivační fráze",
+                "advanced_options": "Pokročilé možnosti",
+                "debugging": "Ladění",
+                "tools_testing": "Nástroje a testování",
+
+                # Buttons
+                "start_detection": "🎬 Spustit detekci",
+                "stop_detection": "⏹️ Zastavit detekci",
+                "reload_config": "🔄 Znovu načíst konfiguraci",
+                "show_statistics": "📊 Zobrazit statistiky",
+                "test_detection": "🧪 Test detekce",
+                "force_token_refresh": "🔄 Vynutit obnovení tokenu (Debug)",
+                "show_confidence_widget": "📈 Zobrazit widget spolehlivosti (Zakázáno)",
+
+                # Settings
+                "enable_debug_logging": "🐛 Povolit debug logování",
+                "enable_quality_scoring": "⭐ Povolit hodnocení kvality",
+                "auto_start_stop": "🚀 Auto-start/stop detekce se streamováním",
+                "language_setting": "🌐 Language / Jazyk",
+
+                # Twitch Setup
+                "client_id": "Client ID:",
+                "oauth_token": "OAuth Token:",
+                "broadcaster_id": "Broadcaster ID:",
+                "client_secret": "Client Secret (Volitelné):",
+                "refresh_token": "Refresh Token (Volitelné):",
+
+                # Audio Sources
+                "microphone_source": "Zdroj mikrofonu:",
+                "voice_chat_source": "Zdroj hlasového chatu:",
+
+                # Detection Settings
+                "basic_emotion_sensitivity": "Citlivost základní detekce emocí:",
+                "opensmile_sensitivity": "Citlivost OpenSMILE:",
+                "vosk_sensitivity": "Citlivost Vosk:",
+                "clip_duration": "Délka klipu (sekundy):"
+            }
+        }
+        return texts.get(language, texts["en"])
+
     def _log_to_obs(self, level, message):
         """Log to OBS only if logging is enabled or if it's a critical message"""
         enable_logging = self.config.get("enable_logging", False)
@@ -231,6 +325,7 @@ class SmartClipCZ:
             "twitch_broadcaster_id": "",
             "clip_duration": 30,
             "enable_logging": False,
+            "language": "en",
             "quality_scoring_enabled": True,
             "basic_emotion_enabled": True,
             "opensmile_enabled": True,
@@ -238,7 +333,57 @@ class SmartClipCZ:
             "auto_start_on_stream": False,
 
         }
-    
+
+    def _detect_best_audio_source(self):
+        """Auto-detect the best audio source based on common names"""
+        try:
+            # Get available sources
+            sources = obs.obs_enum_sources()
+            available_sources = []
+
+            for source in sources:
+                try:
+                    source_name = obs.obs_source_get_name(source)
+                    if obs.obs_source_audio_active(source):
+                        available_sources.append(source_name)
+                except:
+                    continue
+
+            obs.source_list_release(sources)
+
+            # Priority list for different languages
+            priority_sources = [
+                # Czech
+                "Zvuk plochy", "Mikrofon", "Mikrofon / AUX",
+                # English
+                "Desktop Audio", "Microphone", "Mic/Aux",
+                # German
+                "Desktop-Audio", "Mikrofon",
+                # French
+                "Audio du bureau", "Microphone",
+                # Spanish
+                "Audio de escritorio", "Micrófono"
+            ]
+
+            # Find the first priority source that exists
+            for priority_source in priority_sources:
+                if priority_source in available_sources:
+                    self.logger.info(f"Auto-detected audio source: {priority_source}")
+                    return priority_source
+
+            # If no priority source found, use the first available audio source
+            if available_sources:
+                best_source = available_sources[0]
+                self.logger.info(f"Using first available audio source: {best_source}")
+                return best_source
+
+            self.logger.warning("No audio sources detected")
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error detecting audio source: {e}")
+            return None
+
     def initialize_components(self):
         """Initialize all plugin components"""
         try:
@@ -247,10 +392,18 @@ class SmartClipCZ:
             # Initialize audio handler with multiple sources
             audio_sources = []
             if self.config.get("microphone_enabled", True):
-                mic_source = self.config.get("microphone_source", "Desktop Audio")
+                mic_source = self.config.get("microphone_source", "")
                 if mic_source:
                     audio_sources.append(mic_source)
                     self.logger.info(f"Microphone source enabled: {mic_source}")
+                else:
+                    # Auto-detect best audio source
+                    best_source = self._detect_best_audio_source()
+                    if best_source:
+                        audio_sources.append(best_source)
+                        self.logger.info(f"Auto-detected microphone source: {best_source}")
+                        # Save the detected source to config
+                        self.config["microphone_source"] = best_source
 
             if self.config.get("voice_chat_enabled", False):
                 voice_chat_source = self.config.get("voice_chat_source", "")
@@ -258,10 +411,15 @@ class SmartClipCZ:
                     audio_sources.append(voice_chat_source)
                     self.logger.info(f"Voice chat source enabled: {voice_chat_source}")
 
-            # Fallback to default if no sources enabled
+            # Fallback to auto-detection if no sources enabled
             if not audio_sources:
-                audio_sources = ["Desktop Audio"]
-                self.logger.warning("No audio sources enabled, using default Desktop Audio")
+                best_source = self._detect_best_audio_source()
+                if best_source:
+                    audio_sources = [best_source]
+                    self.logger.info(f"No sources configured, auto-detected: {best_source}")
+                else:
+                    audio_sources = ["Desktop Audio"]  # Last resort
+                    self.logger.warning("No audio sources detected, using fallback")
 
             self.logger.info(f"Initializing audio handler with sources: {audio_sources}")
             self.audio_handler = AudioHandler(
@@ -591,22 +749,23 @@ class SmartClipCZ:
                         self._handle_emotion_detection(emotion_result)
                 
                 # Process audio with OpenSMILE (results handled via callback)
-                if self.opensmile_detector:
+                if self.opensmile_detector and self.config.get("opensmile_enabled", True):
                     self.opensmile_detector.process_audio(audio_data)
                 
                 # Process audio with Vosk
+                vosk_result = None
                 if self.vosk_detector:
                     vosk_result = self.vosk_detector.process_audio(audio_data)
-                    
-                # Phrase detection debugging
-                if vosk_result:
-                    self.logger.info(f"Vosk result received: {vosk_result}")
-                    if isinstance(vosk_result, dict):
-                        phrase = vosk_result.get('matched_phrase', 'unknown')
-                        confidence = vosk_result.get('confidence', 0)
-                        self.logger.info(f"Matched phrase: '{phrase}' (confidence: {confidence:.2f})")
-                
-                    self._handle_vosk_detection(vosk_result)
+
+                    # Phrase detection debugging
+                    if vosk_result:
+                        self.logger.info(f"Vosk result received: {vosk_result}")
+                        if isinstance(vosk_result, dict):
+                            phrase = vosk_result.get('matched_phrase', 'unknown')
+                            confidence = vosk_result.get('confidence', 0)
+                            self.logger.info(f"Matched phrase: '{phrase}' (confidence: {confidence:.2f})")
+
+                        self._handle_vosk_detection(vosk_result)
                 
                 # Mark task as done
                 self.audio_queue.task_done()
@@ -1001,24 +1160,162 @@ def script_description():
     <p><i>Python rewrite - No more crashes, better performance!</i></p>
     """
 
+def get_ui_texts(language):
+    """Get UI text strings for the specified language"""
+    texts = {
+        "en": {
+            # UI Labels
+            "twitch_setup": "Twitch Setup",
+            "audio_sources": "Audio Sources",
+            "detection_settings": "Detection Settings",
+            "activation_phrases": "Activation Phrases",
+            "advanced_options": "Advanced Options",
+            "debugging": "Debugging",
+            "tools_testing": "Tools & Testing",
+
+            # Buttons
+            "start_detection": "🎬 Start Detection",
+            "stop_detection": "⏹️ Stop Detection",
+            "reload_config": "🔄 Reload Configuration",
+            "show_statistics": "📊 Show Statistics",
+            "test_detection": "🧪 Test Detection",
+            "force_token_refresh": "🔄 Force Token Refresh (Debug)",
+            "show_confidence_widget": "📈 Show Live Confidence Widget (Disabled)",
+
+            # Settings
+            "enable_debug_logging": "🐛 Enable Debug Logging",
+            "enable_quality_scoring": "⭐ Enable Quality Scoring",
+            "auto_start_stop": "🚀 Auto-start/stop Detection with Streaming",
+
+            # Twitch Setup
+            "client_id": "Client ID:",
+            "oauth_token": "OAuth Token:",
+            "broadcaster_id": "Broadcaster ID:",
+            "client_secret": "Client Secret (Optional):",
+            "refresh_token": "Refresh Token (Optional):",
+
+            # Audio Sources
+            "microphone_source": "Microphone Source:",
+            "voice_chat_source": "Voice Chat Source:",
+
+            # Detection Settings
+            "basic_emotion_sensitivity": "Basic Emotion Sensitivity:",
+            "opensmile_sensitivity": "OpenSMILE Sensitivity:",
+            "vosk_sensitivity": "Vosk Sensitivity:",
+            "clip_duration": "Clip Duration (seconds):",
+
+            # Detection Modules
+            "enable_basic_emotion": "🎭 Enable Basic Emotion Detection",
+            "enable_opensmile": "🤖 Enable OpenSMILE Detection",
+            "enable_vosk": "🗣️ Enable Vosk Speech Recognition",
+
+            # Activation Phrases
+            "czech_activation_phrases": "🇨🇿 Czech Activation Phrases (comma-separated)",
+            "english_activation_phrases": "🇺🇸 English Activation Phrases (comma-separated)",
+
+            # Emotion Detection
+            "detect_laughter": "😂 Detect Laughter",
+            "detect_excitement": "🎉 Detect Excitement",
+            "detect_surprise": "😲 Detect Surprise",
+            "detect_joy": "😊 Detect Joy",
+            "detect_anger": "😠 Detect Anger",
+            "detect_fear": "😨 Detect Fear",
+            "detect_sadness": "😢 Detect Sadness"
+        },
+        "cs": {
+            # UI Labels
+            "twitch_setup": "Nastavení Twitch",
+            "audio_sources": "Zdroje zvuku",
+            "detection_settings": "Nastavení detekce",
+            "activation_phrases": "Aktivační fráze",
+            "advanced_options": "Pokročilé možnosti",
+            "debugging": "Ladění",
+            "tools_testing": "Nástroje a testování",
+
+            # Buttons
+            "start_detection": "🎬 Spustit detekci",
+            "stop_detection": "⏹️ Zastavit detekci",
+            "reload_config": "🔄 Znovu načíst konfiguraci",
+            "show_statistics": "📊 Zobrazit statistiky",
+            "test_detection": "🧪 Test detekce",
+            "force_token_refresh": "🔄 Vynutit obnovení tokenu (Debug)",
+            "show_confidence_widget": "📈 Zobrazit widget spolehlivosti (Zakázáno)",
+
+            # Settings
+            "enable_debug_logging": "🐛 Povolit debug logování",
+            "enable_quality_scoring": "⭐ Povolit hodnocení kvality",
+            "auto_start_stop": "🚀 Auto-start/stop detekce se streamováním",
+
+            # Twitch Setup
+            "client_id": "Client ID:",
+            "oauth_token": "OAuth Token:",
+            "broadcaster_id": "Broadcaster ID:",
+            "client_secret": "Client Secret (Volitelné):",
+            "refresh_token": "Refresh Token (Volitelné):",
+
+            # Audio Sources
+            "microphone_source": "Zdroj mikrofonu:",
+            "voice_chat_source": "Zdroj hlasového chatu:",
+
+            # Detection Settings
+            "basic_emotion_sensitivity": "Citlivost základní detekce emocí:",
+            "opensmile_sensitivity": "Citlivost OpenSMILE:",
+            "vosk_sensitivity": "Citlivost Vosk:",
+            "clip_duration": "Délka klipu (sekundy):",
+
+            # Detection Modules
+            "enable_basic_emotion": "🎭 Povolit základní detekci emocí",
+            "enable_opensmile": "🤖 Povolit OpenSMILE detekci",
+            "enable_vosk": "🗣️ Povolit rozpoznávání řeči Vosk",
+
+            # Activation Phrases
+            "czech_activation_phrases": "🇨🇿 České aktivační fráze (oddělené čárkami)",
+            "english_activation_phrases": "🇺🇸 Anglické aktivační fráze (oddělené čárkami)",
+
+            # Emotion Detection
+            "detect_laughter": "😂 Detekovat smích",
+            "detect_excitement": "🎉 Detekovat vzrušení",
+            "detect_surprise": "😲 Detekovat překvapení",
+            "detect_joy": "😊 Detekovat radost",
+            "detect_anger": "😠 Detekovat hněv",
+            "detect_fear": "😨 Detekovat strach",
+            "detect_sadness": "😢 Detekovat smutek"
+        }
+    }
+    return texts.get(language, texts["en"])
+
 def script_properties():
     """Define script properties for OBS UI"""
     props = obs.obs_properties_create()
 
+    # Get current language for UI
+    try:
+        current_language = smartclip.config.get("language", "en") if 'smartclip' in globals() and smartclip else "en"
+        texts = get_ui_texts(current_language)
+    except:
+        texts = get_ui_texts("en")  # Fallback to English
+
+    # === LANGUAGE ===
+    language_list = obs.obs_properties_add_list(props, "language", "🌐 Language / Jazyk",
+                                               obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    obs.obs_property_list_add_string(language_list, "English", "en")
+    obs.obs_property_list_add_string(language_list, "Čeština", "cs")
+    obs.obs_property_set_modified_callback(language_list, language_changed_callback)
+
     # === MAIN CONTROLS ===
-    obs.obs_properties_add_button(props, "start_detection", "▶️ Start Detection", start_detection_callback)
-    obs.obs_properties_add_button(props, "stop_detection", "⏹️ Stop Detection", stop_detection_callback)
-    obs.obs_properties_add_button(props, "reload_config", "🔄 Reload Config", reload_config_callback)
+    obs.obs_properties_add_button(props, "start_detection", texts["start_detection"], start_detection_callback)
+    obs.obs_properties_add_button(props, "stop_detection", texts["stop_detection"], stop_detection_callback)
+    obs.obs_properties_add_button(props, "reload_config", texts["reload_config"], reload_config_callback)
 
     # === AUDIO SOURCES ===
     # Microphone source
     obs.obs_properties_add_bool(props, "microphone_enabled", "🎤 Enable Microphone Monitoring")
-    microphone_sources = obs.obs_properties_add_list(props, "microphone_source", "🎤 Microphone Source",
+    microphone_sources = obs.obs_properties_add_list(props, "microphone_source", f"🎤 {texts['microphone_source']}",
                                                      obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
 
     # Voice chat source
     obs.obs_properties_add_bool(props, "voice_chat_enabled", "💬 Enable Voice Chat Monitoring")
-    voice_chat_sources = obs.obs_properties_add_list(props, "voice_chat_source", "💬 Voice Chat Source",
+    voice_chat_sources = obs.obs_properties_add_list(props, "voice_chat_source", f"💬 {texts['voice_chat_source']}",
                                                      obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
 
     # Add available audio sources to both dropdowns
@@ -1031,35 +1328,35 @@ def script_properties():
     obs.source_list_release(sources)
 
     # === DETECTION MODULES ===
-    obs.obs_properties_add_bool(props, "basic_emotion_enabled", "🎭 Enable Basic Emotion Detection")
-    obs.obs_properties_add_bool(props, "opensmile_enabled", "🤖 Enable OpenSMILE Detection")
-    obs.obs_properties_add_bool(props, "vosk_enabled", "🗣️ Enable Vosk Speech Recognition")
+    obs.obs_properties_add_bool(props, "basic_emotion_enabled", texts["enable_basic_emotion"])
+    obs.obs_properties_add_bool(props, "opensmile_enabled", texts["enable_opensmile"])
+    obs.obs_properties_add_bool(props, "vosk_enabled", texts["enable_vosk"])
 
     # === DETECTION SENSITIVITIES ===
-    obs.obs_properties_add_float_slider(props, "basic_emotion_sensitivity", "🎭 Basic Emotion Sensitivity",
+    obs.obs_properties_add_float_slider(props, "basic_emotion_sensitivity", f"🎭 {texts['basic_emotion_sensitivity']}",
                                        0.1, 1.0, 0.1)
-    obs.obs_properties_add_float_slider(props, "opensmile_sensitivity", "🤖 OpenSMILE Sensitivity",
+    obs.obs_properties_add_float_slider(props, "opensmile_sensitivity", f"🤖 {texts['opensmile_sensitivity']}",
                                        0.1, 1.0, 0.1)
-    obs.obs_properties_add_float_slider(props, "vosk_sensitivity", "🗣️ Vosk Speech Sensitivity",
+    obs.obs_properties_add_float_slider(props, "vosk_sensitivity", f"🗣️ {texts['vosk_sensitivity']}",
                                        0.1, 1.0, 0.1)
 
     # === EMOTION TYPES ===
-    obs.obs_properties_add_bool(props, "emotion_laughter", "🤣 Detect Laughter")
-    obs.obs_properties_add_bool(props, "emotion_excitement", "🎉 Detect Excitement")
-    obs.obs_properties_add_bool(props, "emotion_surprise", "😲 Detect Surprise")
-    obs.obs_properties_add_bool(props, "emotion_joy", "😊 Detect Joy")
-    obs.obs_properties_add_bool(props, "emotion_anger", "😠 Detect Anger")
-    obs.obs_properties_add_bool(props, "emotion_fear", "😨 Detect Fear")
-    obs.obs_properties_add_bool(props, "emotion_sadness", "😢 Detect Sadness")
+    obs.obs_properties_add_bool(props, "emotion_laughter", texts["detect_laughter"])
+    obs.obs_properties_add_bool(props, "emotion_excitement", texts["detect_excitement"])
+    obs.obs_properties_add_bool(props, "emotion_surprise", texts["detect_surprise"])
+    obs.obs_properties_add_bool(props, "emotion_joy", texts["detect_joy"])
+    obs.obs_properties_add_bool(props, "emotion_anger", texts["detect_anger"])
+    obs.obs_properties_add_bool(props, "emotion_fear", texts["detect_fear"])
+    obs.obs_properties_add_bool(props, "emotion_sadness", texts["detect_sadness"])
 
     # === ACTIVATION PHRASES ===
-    obs.obs_properties_add_text(props, "activation_phrases", "🇨🇿 Czech Activation Phrases (comma-separated)",
+    obs.obs_properties_add_text(props, "activation_phrases", texts["czech_activation_phrases"],
                                obs.OBS_TEXT_MULTILINE)
-    obs.obs_properties_add_text(props, "english_activation_phrases", "🇺🇸 English Activation Phrases (comma-separated)",
+    obs.obs_properties_add_text(props, "english_activation_phrases", texts["english_activation_phrases"],
                                obs.OBS_TEXT_MULTILINE)
 
     # === CLIP SETTINGS ===
-    obs.obs_properties_add_int_slider(props, "clip_duration", "🎬 Clip Duration (seconds)",
+    obs.obs_properties_add_int_slider(props, "clip_duration", f"🎬 {texts['clip_duration']}",
                                      15, 60, 1)
 
 
@@ -1067,77 +1364,119 @@ def script_properties():
 
 
     # === TWITCH API CREDENTIALS ===
-    obs.obs_properties_add_text(props, "twitch_client_id", "🔑 Twitch Client ID", obs.OBS_TEXT_DEFAULT)
-    obs.obs_properties_add_text(props, "twitch_client_secret", "🔐 Twitch Client Secret (for token refresh)", obs.OBS_TEXT_PASSWORD)
-    obs.obs_properties_add_text(props, "twitch_oauth_token", "🎫 Twitch OAuth Token", obs.OBS_TEXT_PASSWORD)
-    obs.obs_properties_add_text(props, "twitch_refresh_token", "🔄 Twitch Refresh Token (for auto-refresh)", obs.OBS_TEXT_PASSWORD)
-    obs.obs_properties_add_text(props, "twitch_broadcaster_id", "👤 Twitch Broadcaster ID", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(props, "twitch_client_id", f"🔑 {texts['client_id']}", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_text(props, "twitch_client_secret", f"🔐 {texts['client_secret']}", obs.OBS_TEXT_PASSWORD)
+    obs.obs_properties_add_text(props, "twitch_oauth_token", f"🎫 {texts['oauth_token']}", obs.OBS_TEXT_PASSWORD)
+    obs.obs_properties_add_text(props, "twitch_refresh_token", f"🔄 {texts['refresh_token']}", obs.OBS_TEXT_PASSWORD)
+    obs.obs_properties_add_text(props, "twitch_broadcaster_id", f"👤 {texts['broadcaster_id']}", obs.OBS_TEXT_DEFAULT)
 
     # === ADVANCED OPTIONS ===
-    obs.obs_properties_add_bool(props, "quality_scoring_enabled", "⭐ Enable Quality Scoring")
-    obs.obs_properties_add_bool(props, "auto_start_on_stream", "🚀 Auto-start/stop Detection with Streaming")
+    obs.obs_properties_add_bool(props, "quality_scoring_enabled", texts["enable_quality_scoring"])
+    obs.obs_properties_add_bool(props, "auto_start_on_stream", texts["auto_start_stop"])
 
     # === DEBUGGING ===
-    obs.obs_properties_add_bool(props, "enable_logging", "🐛 Enable Debug Logging")
+    obs.obs_properties_add_bool(props, "enable_logging", texts["enable_debug_logging"])
     obs.obs_properties_add_text(props, "logging_info", "", obs.OBS_TEXT_INFO)
     obs.obs_property_set_long_description(obs.obs_properties_get(props, "logging_info"),
                                         "Debug logging creates detailed log files for troubleshooting. "
                                         "Keep disabled for normal use to improve performance.")
 
     # === TOOLS & TESTING ===
-    obs.obs_properties_add_button(props, "show_statistics", "📊 Show Statistics", show_statistics_callback)
-    obs.obs_properties_add_button(props, "test_detection", "🧪 Test Detection", test_detection_callback)
-    obs.obs_properties_add_button(props, "force_token_refresh", "🔄 Force Token Refresh (Debug)", force_token_refresh_callback)
+    obs.obs_properties_add_button(props, "show_statistics", texts["show_statistics"], show_statistics_callback)
+    obs.obs_properties_add_button(props, "test_detection", texts["test_detection"], test_detection_callback)
+    obs.obs_properties_add_button(props, "force_token_refresh", texts["force_token_refresh"], force_token_refresh_callback)
     # Temporarily disabled - widget needs fixes
-    obs.obs_properties_add_button(props, "show_confidence_widget", "📈 Show Live Confidence Widget (Disabled)", show_confidence_widget_disabled_callback)
+    obs.obs_properties_add_button(props, "show_confidence_widget", texts["show_confidence_widget"], show_confidence_widget_disabled_callback)
 
     return props
 
 def script_defaults(settings):
-    """Set default values"""
-    # Legacy sensitivity for backward compatibility
-    obs.obs_data_set_default_double(settings, "emotion_sensitivity", 0.7)
+    """Set default values from saved configuration or fallback defaults"""
+    try:
+        # Load saved configuration if available
+        config = {}
+        if smartclip and smartclip.config:
+            config = smartclip.config
 
-    # Separate detector sensitivities
-    obs.obs_data_set_default_double(settings, "basic_emotion_sensitivity", 0.7)
-    obs.obs_data_set_default_double(settings, "opensmile_sensitivity", 0.5)
-    obs.obs_data_set_default_double(settings, "vosk_sensitivity", 0.6)
+        # Legacy sensitivity for backward compatibility
+        obs.obs_data_set_default_double(settings, "emotion_sensitivity",
+                                       config.get("emotion_sensitivity", 0.7))
 
-    # Clip settings
-    obs.obs_data_set_default_int(settings, "clip_duration", 30)
+        # Separate detector sensitivities
+        obs.obs_data_set_default_double(settings, "basic_emotion_sensitivity",
+                                       config.get("basic_emotion_sensitivity",
+                                                 config.get("emotion_sensitivity", 0.7)))
+        obs.obs_data_set_default_double(settings, "opensmile_sensitivity",
+                                       config.get("opensmile_sensitivity", 0.5))
+        obs.obs_data_set_default_double(settings, "vosk_sensitivity",
+                                       config.get("vosk_sensitivity", 0.6))
 
-    # Audio source defaults
-    obs.obs_data_set_default_bool(settings, "microphone_enabled", True)
-    obs.obs_data_set_default_string(settings, "microphone_source", "Desktop Audio")
-    obs.obs_data_set_default_bool(settings, "voice_chat_enabled", False)
-    obs.obs_data_set_default_string(settings, "voice_chat_source", "")
+        # Clip settings
+        obs.obs_data_set_default_int(settings, "clip_duration",
+                                    config.get("clip_duration", 30))
 
-    # Debugging defaults
-    obs.obs_data_set_default_bool(settings, "enable_logging", False)
+        # Audio source defaults
+        obs.obs_data_set_default_bool(settings, "microphone_enabled", True)
+        obs.obs_data_set_default_string(settings, "microphone_source", "Desktop Audio")
+        obs.obs_data_set_default_bool(settings, "voice_chat_enabled", False)
+        obs.obs_data_set_default_string(settings, "voice_chat_source", "")
 
-    # Default emotions enabled
-    obs.obs_data_set_default_bool(settings, "emotion_laughter", True)
-    obs.obs_data_set_default_bool(settings, "emotion_excitement", True)
-    obs.obs_data_set_default_bool(settings, "emotion_surprise", True)
-    obs.obs_data_set_default_bool(settings, "emotion_joy", True)
-    obs.obs_data_set_default_bool(settings, "emotion_anger", False)
-    obs.obs_data_set_default_bool(settings, "emotion_fear", False)
-    obs.obs_data_set_default_bool(settings, "emotion_sadness", False)
+        # Language defaults
+        obs.obs_data_set_default_string(settings, "language",
+                                       config.get("language", "en"))
 
-    # Default Czech activation phrases
-    default_phrases = "to je skvělé, wow, úžasné, perfektní, super, bomba, co to bylo, to je šílené, neuvěřitelné, holy shit, parádní, skvělý, výborný"
-    obs.obs_data_set_default_string(settings, "activation_phrases", default_phrases)
+        # Debugging defaults
+        obs.obs_data_set_default_bool(settings, "enable_logging",
+                                     config.get("enable_logging", False))
 
-    # Default English activation phrases
-    default_english_phrases = "that's amazing, awesome, incredible, fantastic, wow, what the hell, that's insane, unbelievable, holy shit, that's crazy, amazing, perfect, excellent"
-    obs.obs_data_set_default_string(settings, "english_activation_phrases", default_english_phrases)
+        # Default emotions enabled - load from config
+        enabled_emotions = config.get("enabled_emotions", ["laughter", "excitement", "surprise", "joy"])
+        obs.obs_data_set_default_bool(settings, "emotion_laughter", "laughter" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_excitement", "excitement" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_surprise", "surprise" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_joy", "joy" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_anger", "anger" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_fear", "fear" in enabled_emotions)
+        obs.obs_data_set_default_bool(settings, "emotion_sadness", "sadness" in enabled_emotions)
 
-    # Component settings
-    obs.obs_data_set_default_bool(settings, "basic_emotion_enabled", True)
-    obs.obs_data_set_default_bool(settings, "opensmile_enabled", True)
-    obs.obs_data_set_default_bool(settings, "vosk_enabled", True)
-    obs.obs_data_set_default_bool(settings, "quality_scoring_enabled", True)
-    obs.obs_data_set_default_bool(settings, "auto_start_on_stream", False)
+        # Load activation phrases from config or use fallback defaults
+        saved_phrases = config.get("activation_phrases", [])
+        if saved_phrases:
+            phrases_text = ", ".join(saved_phrases)
+        else:
+            phrases_text = "to je skvělé, wow, úžasné, perfektní, super, bomba, co to bylo, to je šílené, neuvěřitelné, holy shit, parádní, skvělý, výborný"
+        obs.obs_data_set_default_string(settings, "activation_phrases", phrases_text)
+
+        # Load English activation phrases from config or use fallback defaults
+        saved_english_phrases = config.get("english_activation_phrases", [])
+        if saved_english_phrases:
+            english_phrases_text = ", ".join(saved_english_phrases)
+        else:
+            english_phrases_text = "that's amazing, awesome, incredible, fantastic, wow, what the hell, that's insane, unbelievable, holy shit, that's crazy, amazing, perfect, excellent"
+        obs.obs_data_set_default_string(settings, "english_activation_phrases", english_phrases_text)
+
+        # Component settings - load from config
+        obs.obs_data_set_default_bool(settings, "basic_emotion_enabled",
+                                     config.get("basic_emotion_enabled", True))
+        obs.obs_data_set_default_bool(settings, "opensmile_enabled",
+                                     config.get("opensmile_enabled", True))
+        obs.obs_data_set_default_bool(settings, "vosk_enabled",
+                                     config.get("vosk_enabled", True))
+        obs.obs_data_set_default_bool(settings, "quality_scoring_enabled",
+                                     config.get("quality_scoring_enabled", True))
+        obs.obs_data_set_default_bool(settings, "auto_start_on_stream",
+                                     config.get("auto_start_on_stream", False))
+
+    except Exception as e:
+        obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Error in script_defaults: {e}")
+        # Fallback to hardcoded defaults if config loading fails
+        obs.obs_data_set_default_double(settings, "emotion_sensitivity", 0.7)
+        obs.obs_data_set_default_double(settings, "basic_emotion_sensitivity", 0.7)
+        obs.obs_data_set_default_double(settings, "opensmile_sensitivity", 0.5)
+        obs.obs_data_set_default_double(settings, "vosk_sensitivity", 0.6)
+        obs.obs_data_set_default_int(settings, "clip_duration", 30)
+        obs.obs_data_set_default_string(settings, "language", "en")
+        obs.obs_data_set_default_bool(settings, "enable_logging", False)
 
     # Load Twitch credentials from config file into OBS UI
     if smartclip and smartclip.config:
@@ -1215,19 +1554,32 @@ def script_update(settings):
             # Reinitialize audio handler with new configuration
             audio_sources = []
             if smartclip.config.get("microphone_enabled", True):
-                mic_source = smartclip.config.get("microphone_source", "Desktop Audio")
+                mic_source = smartclip.config.get("microphone_source", "")
                 if mic_source:
                     audio_sources.append(mic_source)
+                else:
+                    # Auto-detect best audio source
+                    best_source = smartclip._detect_best_audio_source()
+                    if best_source:
+                        audio_sources.append(best_source)
+                        smartclip.config["microphone_source"] = best_source
+                        smartclip.logger.info(f"Auto-detected microphone source: {best_source}")
 
             if smartclip.config.get("voice_chat_enabled", False):
                 voice_chat_source = smartclip.config.get("voice_chat_source", "")
                 if voice_chat_source:
                     audio_sources.append(voice_chat_source)
 
-            # Fallback to default if no sources enabled
+            # Fallback to auto-detection if no sources enabled
             if not audio_sources:
-                audio_sources = ["Desktop Audio"]
-                smartclip.logger.warning("No audio sources enabled, using default Desktop Audio")
+                best_source = smartclip._detect_best_audio_source()
+                if best_source:
+                    audio_sources = [best_source]
+                    smartclip.logger.info(f"No sources configured, auto-detected: {best_source}")
+                else:
+                    # Last resort fallback
+                    audio_sources = ["Zvuk plochy"]  # Czech default
+                    smartclip.logger.warning("No audio sources detected, using Czech fallback")
 
             smartclip.audio_handler = AudioHandler(
                 sources=audio_sources,
@@ -1409,6 +1761,13 @@ def script_update(settings):
             smartclip.logger.info(f"Clip duration changed to {new_clip_duration} seconds")
         smartclip.config["clip_duration"] = new_clip_duration
 
+        # Update language configuration
+        new_language = obs.obs_data_get_string(settings, "language")
+        if new_language != prev_config.get("language", "en"):
+            smartclip.logger.info(f"Language changed to {'English' if new_language == 'en' else 'Czech'}")
+            smartclip.config["language"] = new_language
+            smartclip.texts = smartclip.get_texts()  # Update localized texts
+
         # Update logging configuration
         new_enable_logging = obs.obs_data_get_bool(settings, "enable_logging")
         if new_enable_logging != prev_config.get("enable_logging", False):
@@ -1462,6 +1821,34 @@ def script_update(settings):
             smartclip.emotion_detector = None
             # Note: Enable/disable logging is handled by configuration change detection
 
+        # Handle OpenSMILE detector enable/disable
+        opensmile_enabled = smartclip.config.get("opensmile_enabled", True)
+        if opensmile_enabled and not smartclip.opensmile_detector:
+            # Enable OpenSMILE detector
+            try:
+                opensmile_sensitivity = smartclip.config.get("opensmile_sensitivity",
+                                                            smartclip.config.get("emotion_sensitivity", 0.7))
+                smartclip.opensmile_detector = OpenSMILEDetector(
+                    config_file="IS09_emotion.conf",
+                    sensitivity=opensmile_sensitivity,
+                    result_callback=smartclip._handle_opensmile_detection
+                )
+                smartclip.logger.info(f"OpenSMILE detector enabled (sensitivity: {opensmile_sensitivity})")
+
+                # Start detection if main detection is running
+                if smartclip.running:
+                    smartclip.opensmile_detector.start_detection()
+
+            except Exception as e:
+                smartclip.logger.warning(f"OpenSMILE initialization failed: {e}")
+                smartclip.opensmile_detector = None
+
+        elif not opensmile_enabled and smartclip.opensmile_detector:
+            # Disable OpenSMILE detector
+            smartclip.opensmile_detector.stop_detection()
+            smartclip.opensmile_detector = None
+            smartclip.logger.info("OpenSMILE detector disabled")
+
         # Update component settings if they exist (only log if values changed)
         if smartclip.emotion_detector:
             basic_sensitivity = smartclip.config.get("basic_emotion_sensitivity",
@@ -1472,6 +1859,14 @@ def script_update(settings):
                 smartclip.emotion_detector.set_sensitivity(basic_sensitivity, log_change=True)
             else:
                 smartclip.emotion_detector.set_sensitivity(basic_sensitivity, log_change=False)
+
+            # Update enabled emotions if they changed
+            current_enabled_emotions = smartclip.config.get("enabled_emotions", [])
+            prev_enabled_emotions = prev_config.get("enabled_emotions", [])
+
+            if current_enabled_emotions != prev_enabled_emotions:
+                smartclip.emotion_detector.set_enabled_emotions(current_enabled_emotions)
+                smartclip.logger.info(f"Basic emotion detector emotions updated: {len(current_enabled_emotions)} emotions")
 
         if smartclip.opensmile_detector:
             opensmile_sensitivity = smartclip.config.get("opensmile_sensitivity",
@@ -1492,6 +1887,40 @@ def script_update(settings):
                 smartclip.vosk_detector.set_confidence_threshold(vosk_sensitivity, log_change=True)
             else:
                 smartclip.vosk_detector.set_confidence_threshold(vosk_sensitivity, log_change=False)
+
+            # Update activation phrases if they changed
+            current_czech_phrases = smartclip.config.get("activation_phrases", [])
+            current_english_phrases = smartclip.config.get("english_activation_phrases", [])
+            prev_czech_phrases = prev_config.get("activation_phrases", [])
+            prev_english_phrases = prev_config.get("english_activation_phrases", [])
+
+            phrases_changed = (current_czech_phrases != prev_czech_phrases or
+                             current_english_phrases != prev_english_phrases)
+
+            if phrases_changed:
+                smartclip.vosk_detector.update_activation_phrases(
+                    czech_phrases=current_czech_phrases,
+                    english_phrases=current_english_phrases,
+                    log_change=True
+                )
+            else:
+                # Still update but don't log (in case of first load)
+                smartclip.vosk_detector.update_activation_phrases(
+                    czech_phrases=current_czech_phrases,
+                    english_phrases=current_english_phrases,
+                    log_change=False
+                )
+
+        # Save configuration to file after all updates
+        try:
+            config_path = os.path.join(plugin_dir, 'smartclip_cz_config.json')
+            save_success = smartclip.config_manager.save_config(config_path, smartclip.config)
+            if save_success:
+                smartclip.logger.debug("Configuration saved to file successfully")
+            else:
+                smartclip.logger.error("Failed to save configuration to file")
+        except Exception as save_error:
+            smartclip.logger.error(f"Error saving configuration: {save_error}")
 
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Error updating settings: {e}")
@@ -1545,6 +1974,15 @@ def script_unload():
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Unload error: {e}")
 
 # Callback functions
+def language_changed_callback(props, prop, settings):
+    """Language selection callback - triggers UI refresh"""
+    try:
+        # This will trigger script_update which handles the language change
+        return True
+    except Exception as e:
+        obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Language callback error: {e}")
+    return True
+
 def start_detection_callback(props, prop):
     """Start detection button callback"""
     try:

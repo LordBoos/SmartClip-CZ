@@ -1628,7 +1628,7 @@ Features included:
             steps_text = ("1. In the Twitch Developer Console (opened in browser):\n" +
                          "   • Click 'Register Your Application' or 'Create an App'\n" +
                          "   • Name: 'SmartClip CZ' (or any name you prefer)\n" +
-                         "   • OAuth Redirect URLs: 'http://localhost:3000'\n" +
+                         "   • OAuth Redirect URLs: 'http://localhost:3000' (without / at the end!)\n" +
                          "   • Category: 'Application Integration'\n" +
                          "   • Click 'Create'\n\n" +
                          "2. From your application details:\n" +

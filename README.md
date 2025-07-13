@@ -560,8 +560,7 @@ We welcome contributions! Please:
 
 For support, questions, or feature requests:
 - **GitHub Issues:** [Report bugs or request features](https://github.com/smartclip-cz/smartclip-cz-python/issues)
-- **Documentation:** Check this README and the [Wiki](https://github.com/smartclip-cz/smartclip-cz-python/wiki)
-- **Community:** Join our [Discord server](https://discord.gg/smartclip-cz) for community support
+- **Documentation:** Check this README
 
 ---
 

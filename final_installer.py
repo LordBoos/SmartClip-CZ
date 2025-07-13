@@ -1633,8 +1633,6 @@ Features included:
                          "   • Click 'Create'\n\n" +
                          "2. From your application details:\n" +
                          "   • Copy the 'Client ID' (always visible)\n" +
-                         "   • Click 'New Secret' to generate a Client Secret\n" +
-                         "   • Copy the Client Secret immediately (shown only once!)\n\n" +
                          "3. Paste your Client ID below to continue:")
 
             steps_label = tk.Label(client_id_dialog, text=steps_text, justify=tk.LEFT, wraplength=550)
@@ -1705,7 +1703,7 @@ Features included:
                           "2. If you skip this step:\n" +
                           "   • Tokens will expire every ~4 hours\n" +
                           "   • You'll need to manually refresh them\n\n" +
-                          "Client Secret (optional):")
+                          "Paste your Client Secret below to continue:")
 
             secret_label = tk.Label(client_secret_dialog, text=secret_text, justify=tk.LEFT, wraplength=550)
             secret_label.pack(pady=10, padx=20)

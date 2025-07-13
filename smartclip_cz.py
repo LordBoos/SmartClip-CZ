@@ -160,7 +160,10 @@ class SmartClipCZ:
                 "what the hell", "that's insane", "unbelievable", "holy shit",
                 "that's crazy", "amazing", "perfect", "excellent"
             ],
-            "audio_sources": ["Desktop Audio"],
+            "microphone_source": "Desktop Audio",
+            "microphone_enabled": True,
+            "voice_chat_source": "",
+            "voice_chat_enabled": False,
             "twitch_client_id": "",
             "twitch_oauth_token": "",
             "twitch_broadcaster_id": "",
@@ -177,10 +180,29 @@ class SmartClipCZ:
         """Initialize all plugin components"""
         try:
             self.logger.info("Initializing SmartClip CZ components...")
-            
-            # Initialize audio handler
+
+            # Initialize audio handler with multiple sources
+            audio_sources = []
+            if self.config.get("microphone_enabled", True):
+                mic_source = self.config.get("microphone_source", "Desktop Audio")
+                if mic_source:
+                    audio_sources.append(mic_source)
+                    self.logger.info(f"Microphone source enabled: {mic_source}")
+
+            if self.config.get("voice_chat_enabled", False):
+                voice_chat_source = self.config.get("voice_chat_source", "")
+                if voice_chat_source:
+                    audio_sources.append(voice_chat_source)
+                    self.logger.info(f"Voice chat source enabled: {voice_chat_source}")
+
+            # Fallback to default if no sources enabled
+            if not audio_sources:
+                audio_sources = ["Desktop Audio"]
+                self.logger.warning("No audio sources enabled, using default Desktop Audio")
+
+            self.logger.info(f"Initializing audio handler with sources: {audio_sources}")
             self.audio_handler = AudioHandler(
-                sources=self.config.get("audio_sources", ["Desktop Audio"]),
+                sources=audio_sources,
                 sample_rate=16000,
                 buffer_size=1024
             )
@@ -604,7 +626,20 @@ class SmartClipCZ:
 
             # Record clip attempt
             if self.clip_manager:
-                audio_source = self.config.get("audio_sources", ["unknown"])[0]
+                # Determine which audio sources are active
+                active_sources = []
+                if self.config.get("microphone_enabled", True):
+                    mic_source = self.config.get("microphone_source", "Desktop Audio")
+                    if mic_source:
+                        active_sources.append(f"Microphone: {mic_source}")
+
+                if self.config.get("voice_chat_enabled", False):
+                    voice_chat_source = self.config.get("voice_chat_source", "")
+                    if voice_chat_source:
+                        active_sources.append(f"Voice Chat: {voice_chat_source}")
+
+                audio_source = ", ".join(active_sources) if active_sources else "unknown"
+
                 self.clip_manager.record_clip_attempt(
                     detection_type=detection_result.get('type', 'unknown'),
                     trigger_value=detection_result.get('emotion', detection_result.get('matched_phrase', 'unknown')),
@@ -829,16 +864,24 @@ def script_properties():
     obs.obs_properties_add_button(props, "stop_detection", "⏹️ Stop Detection", stop_detection_callback)
     obs.obs_properties_add_button(props, "reload_config", "🔄 Reload Config", reload_config_callback)
 
-    # === AUDIO SOURCE ===
-    audio_sources = obs.obs_properties_add_list(props, "audio_source", "🎤 Audio Source",
-                                               obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+    # === AUDIO SOURCES ===
+    # Microphone source
+    obs.obs_properties_add_bool(props, "microphone_enabled", "🎤 Enable Microphone Monitoring")
+    microphone_sources = obs.obs_properties_add_list(props, "microphone_source", "🎤 Microphone Source",
+                                                     obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
 
-    # Add available audio sources
+    # Voice chat source
+    obs.obs_properties_add_bool(props, "voice_chat_enabled", "💬 Enable Voice Chat Monitoring")
+    voice_chat_sources = obs.obs_properties_add_list(props, "voice_chat_source", "💬 Voice Chat Source",
+                                                     obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_STRING)
+
+    # Add available audio sources to both dropdowns
     sources = obs.obs_enum_sources()
     for source in sources:
         name = obs.obs_source_get_name(source)
         if obs.obs_source_audio_active(source):
-            obs.obs_property_list_add_string(audio_sources, name, name)
+            obs.obs_property_list_add_string(microphone_sources, name, name)
+            obs.obs_property_list_add_string(voice_chat_sources, name, name)
     obs.source_list_release(sources)
 
     # === DETECTION MODULES ===
@@ -909,7 +952,11 @@ def script_defaults(settings):
     # Clip settings
     obs.obs_data_set_default_int(settings, "clip_duration", 30)
 
-    obs.obs_data_set_default_string(settings, "audio_source", "Desktop Audio")
+    # Audio source defaults
+    obs.obs_data_set_default_bool(settings, "microphone_enabled", True)
+    obs.obs_data_set_default_string(settings, "microphone_source", "Desktop Audio")
+    obs.obs_data_set_default_bool(settings, "voice_chat_enabled", False)
+    obs.obs_data_set_default_string(settings, "voice_chat_source", "")
 
     # Default emotions enabled
     obs.obs_data_set_default_bool(settings, "emotion_laughter", True)
@@ -973,12 +1020,67 @@ def script_update(settings):
         smartclip.config["opensmile_sensitivity"] = obs.obs_data_get_double(settings, "opensmile_sensitivity")
         smartclip.config["vosk_sensitivity"] = obs.obs_data_get_double(settings, "vosk_sensitivity")
 
-        # Update audio source
-        new_audio_source = obs.obs_data_get_string(settings, "audio_source")
-        prev_audio_sources = prev_config.get("audio_sources", [])
-        if [new_audio_source] != prev_audio_sources:
-            smartclip.logger.info(f"Audio source updated: {new_audio_source}")
-        smartclip.config["audio_sources"] = [new_audio_source]
+        # Update audio sources
+        new_microphone_enabled = obs.obs_data_get_bool(settings, "microphone_enabled")
+        new_microphone_source = obs.obs_data_get_string(settings, "microphone_source")
+        new_voice_chat_enabled = obs.obs_data_get_bool(settings, "voice_chat_enabled")
+        new_voice_chat_source = obs.obs_data_get_string(settings, "voice_chat_source")
+
+        # Log changes
+        if new_microphone_enabled != prev_config.get("microphone_enabled", True):
+            smartclip.logger.info(f"Microphone monitoring {'enabled' if new_microphone_enabled else 'disabled'}")
+        if new_microphone_source != prev_config.get("microphone_source", "Desktop Audio"):
+            smartclip.logger.info(f"Microphone source updated: {new_microphone_source}")
+        if new_voice_chat_enabled != prev_config.get("voice_chat_enabled", False):
+            smartclip.logger.info(f"Voice chat monitoring {'enabled' if new_voice_chat_enabled else 'disabled'}")
+        if new_voice_chat_source != prev_config.get("voice_chat_source", ""):
+            smartclip.logger.info(f"Voice chat source updated: {new_voice_chat_source}")
+
+        smartclip.config["microphone_enabled"] = new_microphone_enabled
+        smartclip.config["microphone_source"] = new_microphone_source
+        smartclip.config["voice_chat_enabled"] = new_voice_chat_enabled
+        smartclip.config["voice_chat_source"] = new_voice_chat_source
+
+        # Check if audio configuration changed and restart audio handler if needed
+        audio_config_changed = (
+            new_microphone_enabled != prev_config.get("microphone_enabled", True) or
+            new_microphone_source != prev_config.get("microphone_source", "Desktop Audio") or
+            new_voice_chat_enabled != prev_config.get("voice_chat_enabled", False) or
+            new_voice_chat_source != prev_config.get("voice_chat_source", "")
+        )
+
+        if audio_config_changed and smartclip.running:
+            smartclip.logger.info("Audio configuration changed, restarting audio handler...")
+            # Stop current audio capture
+            if smartclip.audio_handler:
+                smartclip.audio_handler.stop_capture()
+
+            # Reinitialize audio handler with new configuration
+            audio_sources = []
+            if smartclip.config.get("microphone_enabled", True):
+                mic_source = smartclip.config.get("microphone_source", "Desktop Audio")
+                if mic_source:
+                    audio_sources.append(mic_source)
+
+            if smartclip.config.get("voice_chat_enabled", False):
+                voice_chat_source = smartclip.config.get("voice_chat_source", "")
+                if voice_chat_source:
+                    audio_sources.append(voice_chat_source)
+
+            # Fallback to default if no sources enabled
+            if not audio_sources:
+                audio_sources = ["Desktop Audio"]
+                smartclip.logger.warning("No audio sources enabled, using default Desktop Audio")
+
+            smartclip.audio_handler = AudioHandler(
+                sources=audio_sources,
+                sample_rate=16000,
+                buffer_size=1024
+            )
+
+            # Restart audio capture
+            smartclip.audio_handler.start_capture(smartclip.audio_callback)
+            smartclip.logger.info(f"Audio handler restarted with sources: {audio_sources}")
 
         # Update enabled emotions
         enabled_emotions = []

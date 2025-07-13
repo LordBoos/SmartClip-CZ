@@ -168,7 +168,38 @@ class TwitchAPI:
                     return None
                     
             elif response.status_code == 401:
-                self.logger.error("Clip creation failed - authentication error")
+                self.logger.warning("Clip creation failed - authentication error, attempting token refresh")
+                # Try to refresh token and retry once
+                if self._refresh_access_token():
+                    self.logger.info("Token refreshed, retrying clip creation")
+                    # Update headers with new token
+                    headers["Authorization"] = f"Bearer {self.oauth_token}"
+
+                    # Retry the request
+                    retry_response = requests.post(self.clips_endpoint, headers=headers, json=data, timeout=15)
+
+                    if retry_response.status_code == 202:
+                        clip_data = retry_response.json()
+                        if clip_data.get("data"):
+                            clip_info = clip_data["data"][0]
+                            clip_id = clip_info.get("id")
+                            edit_url = clip_info.get("edit_url")
+
+                            self.clips_created += 1
+                            self.last_clip_time = datetime.now()
+
+                            self.logger.info(f"Clip created successfully after token refresh: {clip_id}")
+                            self.logger.info(f"Intended title: {title}")
+                            self.logger.info(f"Edit URL: {edit_url}")
+
+                            return clip_id
+                        else:
+                            self.logger.error("Retry clip creation response missing data")
+                    else:
+                        self.logger.error(f"Retry clip creation failed: {retry_response.status_code} - {retry_response.text}")
+                else:
+                    self.logger.error("Token refresh failed, cannot retry clip creation")
+
                 self.api_errors += 1
                 return None
             elif response.status_code == 403:
@@ -356,8 +387,9 @@ class TwitchAPI:
     def _is_token_expired(self) -> bool:
         """Check if the current token is expired or about to expire"""
         if not self.token_expires_at:
-            self.logger.debug("No token expiration time set, assuming token is valid")
-            return False
+            # If we don't have expiration time, try to validate token with API call
+            self.logger.debug("No token expiration time set, testing token with API call")
+            return not self._test_api_connection()
 
         # Consider token expired if it expires within the next 5 minutes
         buffer_time = 300  # 5 minutes in seconds
@@ -399,20 +431,35 @@ class TwitchAPI:
             if response.status_code == 200:
                 token_data = response.json()
 
+                # Log the response for debugging
+                self.logger.debug(f"Token refresh response: {token_data}")
+
                 # Update tokens
+                old_token = self.oauth_token
                 self.oauth_token = token_data.get('access_token')
                 new_refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in')
 
+                # Validate we got a new token
+                if not self.oauth_token:
+                    self.logger.error("Token refresh response missing access_token")
+                    return False
+
                 # Update refresh token if provided (it may change)
                 if new_refresh_token:
                     self.refresh_token = new_refresh_token
+                    self.logger.debug("Refresh token updated")
+                else:
+                    self.logger.debug("No new refresh token provided, keeping existing one")
 
                 # Calculate expiration time
                 if expires_in:
                     self.token_expires_at = time.time() + expires_in
+                    self.logger.info(f"New token expires in {expires_in} seconds")
+                else:
+                    self.logger.warning("Token refresh response missing expires_in")
 
-                self.logger.info("OAuth token refreshed successfully")
+                self.logger.info(f"OAuth token refreshed successfully (token changed: {old_token != self.oauth_token})")
 
                 # Call callback to save new tokens
                 if self.token_refresh_callback:
@@ -421,11 +468,34 @@ class TwitchAPI:
                     except Exception as e:
                         self.logger.error(f"Error in token refresh callback: {e}")
 
+                # Re-validate configuration after successful token refresh
+                self._is_configured = self._validate_config()
+                if self._is_configured:
+                    self.logger.info("Twitch API re-validated successfully after token refresh")
+                else:
+                    self.logger.error("Twitch API validation failed after token refresh")
+
                 return True
             else:
-                error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
-                error_msg = error_data.get('message', f'HTTP {response.status_code}')
-                self.logger.error(f"Token refresh failed: {error_msg}")
+                try:
+                    error_data = response.json() if response.headers.get('content-type', '').startswith('application/json') else {}
+                    error_msg = error_data.get('message', f'HTTP {response.status_code}')
+                    self.logger.error(f"Token refresh failed: {error_msg}")
+                    self.logger.error(f"Response status: {response.status_code}")
+                    self.logger.error(f"Response text: {response.text}")
+
+                    # Log specific error details
+                    if response.status_code == 400:
+                        self.logger.error("Bad request - check client_id, client_secret, and refresh_token")
+                    elif response.status_code == 401:
+                        self.logger.error("Unauthorized - refresh_token may be expired or invalid")
+                    elif response.status_code == 403:
+                        self.logger.error("Forbidden - client may not have permission to refresh tokens")
+
+                except Exception as e:
+                    self.logger.error(f"Error parsing token refresh response: {e}")
+                    self.logger.error(f"Raw response: {response.text}")
+
                 return False
 
         except Exception as e:
@@ -441,9 +511,14 @@ class TwitchAPI:
         # If token is expired or about to expire, try to refresh
         if self._is_token_expired():
             self.logger.info("OAuth token is expired or about to expire, attempting refresh")
-            if not self._refresh_access_token():
-                self.logger.error("Failed to refresh expired token")
-                return False
+            if self._refresh_access_token():
+                self.logger.info("Token refresh successful, proceeding with API call")
+                return True
+            else:
+                self.logger.warning("Token refresh failed, but will try to use existing token")
+                # Don't return False immediately - try to use existing token
+                # The API call itself will fail if the token is truly invalid
+                return True
         else:
             self.logger.debug("OAuth token is valid")
 

@@ -1785,14 +1785,14 @@ Features included:
                 thread.daemon = True
                 thread.start()
 
-                # Wait for OAuth with status monitoring (max 30 seconds)
-                log_oauth("Waiting for OAuth thread to complete (30 second timeout)...")
+                # Wait for OAuth with status monitoring (max 300 seconds)
+                log_oauth("Waiting for OAuth thread to complete (300 second timeout)...")
                 log_oauth(f"Initial OAuth status: {oauth_status[0]}")
 
                 # Check status every 5 seconds
-                for i in range(6):  # 6 * 5 = 30 seconds
+                for i in range(60):  # 6 * 5 = 300 seconds
                     thread.join(timeout=5)
-                    log_oauth(f"OAuth status check {i+1}/6: {oauth_status[0]}")
+                    log_oauth(f"OAuth status check {i+1}/60: {oauth_status[0]}")
                     log_oauth(f"Thread alive: {thread.is_alive()}")
 
                     if not thread.is_alive():
@@ -1805,7 +1805,7 @@ Features included:
 
                 if thread.is_alive():
                     # OAuth is taking too long, skip it
-                    log_oauth("OAuth thread timed out after 30 seconds")
+                    log_oauth("OAuth thread timed out after 300 seconds")
                     self.update_progress(80, "OAuth setup timed out - continuing without credentials")
 
                     # Try to force cleanup
@@ -1977,7 +1977,7 @@ Features included:
 
                 # Improved timeout mechanism with periodic checks
                 start_time = time.time()
-                timeout_seconds = 30
+                timeout_seconds = 300
                 check_interval = 1000  # milliseconds
 
                 # Use a flag to track if dialog should close

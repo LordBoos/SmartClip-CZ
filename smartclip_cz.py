@@ -372,20 +372,65 @@ class SmartClipCZ:
     def _save_refreshed_tokens(self, new_oauth_token: str, new_refresh_token: str):
         """Callback to save refreshed OAuth tokens"""
         try:
-            self.logger.info("Saving refreshed OAuth tokens")
+            self.logger.info("=== TOKEN REFRESH CALLBACK STARTED ===")
+            self.logger.info(f"New OAuth token received: {'[PRESENT]' if new_oauth_token else '[MISSING]'}")
+            self.logger.info(f"New refresh token received: {'[PRESENT]' if new_refresh_token else '[MISSING]'}")
 
-            # Update config
+            # Log current config state
+            current_oauth = self.config.get("twitch_oauth_token", "")
+            current_refresh = self.config.get("twitch_refresh_token", "")
+            self.logger.info(f"Current OAuth token in config: {'[PRESENT]' if current_oauth else '[MISSING]'}")
+            self.logger.info(f"Current refresh token in config: {'[PRESENT]' if current_refresh else '[MISSING]'}")
+
+            # Update config in memory
+            old_oauth_token = self.config.get("twitch_oauth_token", "")
             self.config["twitch_oauth_token"] = new_oauth_token
             if new_refresh_token:
                 self.config["twitch_refresh_token"] = new_refresh_token
+                self.logger.info("Refresh token updated in memory")
+            else:
+                self.logger.warning("No new refresh token provided, keeping existing one")
 
-            # Save to file
-            self.config_manager.save_config(self.config)
+            # Log token changes
+            token_changed = old_oauth_token != new_oauth_token
+            self.logger.info(f"OAuth token changed: {token_changed}")
+            if token_changed:
+                self.logger.info(f"Old token length: {len(old_oauth_token) if old_oauth_token else 0}")
+                self.logger.info(f"New token length: {len(new_oauth_token) if new_oauth_token else 0}")
 
-            self.logger.info("Refreshed tokens saved successfully")
+            # Save to file with proper path
+            config_path = os.path.join(plugin_dir, 'smartclip_cz_config.json')
+            self.logger.info(f"Saving config to: {config_path}")
+
+            save_success = self.config_manager.save_config(config_path, self.config)
+            if save_success:
+                self.logger.info("Refreshed tokens saved to file successfully")
+
+                # Verify the save by reading back
+                try:
+                    with open(config_path, 'r', encoding='utf-8') as f:
+                        saved_config = json.load(f)
+                    saved_oauth = saved_config.get("twitch_oauth_token", "")
+                    saved_refresh = saved_config.get("twitch_refresh_token", "")
+                    self.logger.info(f"Verification - OAuth token in file: {'[PRESENT]' if saved_oauth else '[MISSING]'}")
+                    self.logger.info(f"Verification - Refresh token in file: {'[PRESENT]' if saved_refresh else '[MISSING]'}")
+
+                    if saved_oauth == new_oauth_token:
+                        self.logger.info("OAuth token verification successful")
+                    else:
+                        self.logger.error("OAuth token verification failed - mismatch")
+
+                except Exception as verify_error:
+                    self.logger.error(f"Token save verification failed: {verify_error}")
+            else:
+                self.logger.error("Failed to save refreshed tokens to file")
+
+            self.logger.info("=== TOKEN REFRESH CALLBACK COMPLETED ===")
 
         except Exception as e:
-            self.logger.error(f"Error saving refreshed tokens: {e}")
+            self.logger.error(f"CRITICAL ERROR in token refresh callback: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
 
     def _log_oauth_setup_status(self):
         """Log OAuth setup status and provide guidance for optimal configuration"""
@@ -396,6 +441,21 @@ class SmartClipCZ:
             refresh_token = self.config.get("twitch_refresh_token", "")
             broadcaster_id = self.config.get("twitch_broadcaster_id", "")
 
+            self.logger.info("=== TWITCH OAUTH SETUP STATUS ===")
+            self.logger.info(f"Client ID: {'PRESENT' if client_id else 'MISSING'}")
+            self.logger.info(f"OAuth Token: {'PRESENT' if oauth_token else 'MISSING'}")
+            self.logger.info(f"Broadcaster ID: {'PRESENT' if broadcaster_id else 'MISSING'}")
+            self.logger.info(f"Client Secret: {'PRESENT' if client_secret else 'MISSING'}")
+            self.logger.info(f"Refresh Token: {'PRESENT' if refresh_token else 'MISSING'}")
+
+            # Show token lengths for debugging (without exposing actual tokens)
+            if oauth_token:
+                self.logger.info(f"OAuth Token length: {len(oauth_token)} characters")
+            if refresh_token:
+                self.logger.info(f"Refresh Token length: {len(refresh_token)} characters")
+            if client_secret:
+                self.logger.info(f"Client Secret length: {len(client_secret)} characters")
+
             # Check basic configuration
             if not client_id or not oauth_token or not broadcaster_id:
                 self.logger.warning("Twitch API not fully configured - clips cannot be created")
@@ -405,18 +465,37 @@ class SmartClipCZ:
                 return
 
             # Check for automatic token refresh capability
-            if not client_secret or not refresh_token:
+            can_refresh = bool(client_secret and refresh_token)
+            self.logger.info(f"Automatic token refresh: {'ENABLED' if can_refresh else 'DISABLED'}")
+
+            if not can_refresh:
                 self.logger.warning("Automatic token refresh not configured")
                 self.logger.info("For automatic token refresh (recommended):")
                 self.logger.info("   1. Re-run SmartClip_CZ_Installer.exe")
                 self.logger.info("   2. Choose 'Yes' for Twitch OAuth setup")
                 self.logger.info("   3. Follow the guided process to get refresh tokens")
                 self.logger.info("   4. This prevents token expiration issues")
+
+                if not client_secret:
+                    self.logger.warning("   Missing client_secret (needed for token refresh)")
+                if not refresh_token:
+                    self.logger.warning("   Missing refresh_token (needed for token refresh)")
             else:
                 self.logger.info("Twitch API fully configured with automatic token refresh")
 
+            # Check if Twitch API is actually working
+            if self.twitch_api:
+                api_configured = self.twitch_api.is_configured()
+                self.logger.info(f"Twitch API status: {'WORKING' if api_configured else 'NOT WORKING'}")
+                if not api_configured:
+                    self.logger.warning("  API validation failed - check token validity")
+
+            self.logger.info("=== END OAUTH SETUP STATUS ===")
+
         except Exception as e:
             self.logger.error(f"Error checking OAuth setup status: {e}")
+            import traceback
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
 
     def audio_callback(self, audio_data: np.ndarray):
         """Callback for incoming audio data"""
@@ -934,6 +1013,7 @@ def script_properties():
     # === TOOLS & TESTING ===
     obs.obs_properties_add_button(props, "show_statistics", "📊 Show Statistics", show_statistics_callback)
     obs.obs_properties_add_button(props, "test_detection", "🧪 Test Detection", test_detection_callback)
+    obs.obs_properties_add_button(props, "force_token_refresh", "🔄 Force Token Refresh (Debug)", force_token_refresh_callback)
     # Temporarily disabled - widget needs fixes
     obs.obs_properties_add_button(props, "show_confidence_widget", "📈 Show Live Confidence Widget (Disabled)", show_confidence_widget_disabled_callback)
 
@@ -1453,6 +1533,32 @@ def test_detection_callback(props, prop):
 
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Test callback error: {e}")
+    return True
+
+def force_token_refresh_callback(props, prop):
+    """Force token refresh button callback for debugging"""
+    try:
+        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh requested")
+
+        if not smartclip.twitch_api:
+            obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] Twitch API not initialized")
+            return True
+
+        # Force token refresh
+        success = smartclip.twitch_api.force_token_refresh()
+
+        if success:
+            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh successful")
+            # Test API after refresh
+            if smartclip.twitch_api.is_configured():
+                obs.script_log(obs.LOG_INFO, "[SmartClip CZ] API validation successful after refresh")
+            else:
+                obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] API validation failed after refresh")
+        else:
+            obs.script_log(obs.LOG_ERROR, "[SmartClip CZ] Manual token refresh failed")
+
+    except Exception as e:
+        obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Force token refresh error: {e}")
     return True
 
 def show_confidence_widget_disabled_callback(props, prop):

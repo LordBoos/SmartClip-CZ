@@ -113,8 +113,9 @@ class SmartClipCZ:
             'session_start': datetime.now()
         }
         
-        # Setup logging
-        self.setup_logging()
+        # Initialize a basic logger immediately
+        self.logger = logging.getLogger('SmartClipCZ')
+        self.logger.setLevel(logging.INFO) # Default to INFO level until fully configured
 
         # Initialize language support
         self.texts = self.get_texts()
@@ -124,45 +125,48 @@ class SmartClipCZ:
         self._configure_logging()
 
     def _configure_logging(self):
-        """Configure logging based on enable_logging setting"""
-        # Clear existing handlers to avoid duplicates
+        """Configure logging based on enable_debug_logging setting"""
         root_logger = logging.getLogger()
+
+        # Remove all existing handlers to prevent duplicates and reconfigure cleanly
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
+            handler.close() # Close handlers to release file locks
 
-        # Check if logging is enabled
-        enable_logging = self.config.get("enable_logging", False)
+        enable_debug_logging = self.config.get("advanced_settings", {}).get("enable_debug_logging", False)
 
-        if enable_logging:
-            # Full logging enabled - create log file and detailed logging
+        if enable_debug_logging:
+            # Set root logger level to DEBUG
+            root_logger.setLevel(logging.DEBUG)
+
+            # Add FileHandler
             log_file = os.path.join(plugin_dir, 'smartclip_cz.log')
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='[%(name)s] %(asctime)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(log_file),
-                    logging.StreamHandler()
-                ]
-            )
+            file_handler = logging.FileHandler(log_file, encoding='utf-8')
+            file_handler.setFormatter(logging.Formatter('[%(name)s] %(asctime)s - %(levelname)s - %(message)s'))
+            root_logger.addHandler(file_handler)
+
+            # Add StreamHandler (for console output)
+            stream_handler = logging.StreamHandler()
+            stream_handler.setFormatter(logging.Formatter('[%(name)s] %(asctime)s - %(levelname)s - %(message)s'))
+            root_logger.addHandler(stream_handler)
+
+            self.logger.info("Debug logging enabled - full logging active")
         else:
-            # Minimal logging - completely disable all logging output
-            logging.basicConfig(
-                level=logging.CRITICAL,
-                format='[SmartClip CZ] %(levelname)s - %(message)s',
-                handlers=[
-                    logging.NullHandler()  # No output at all when logging is disabled
-                ]
-            )
+            # Set root logger level to CRITICAL to suppress all output
+            root_logger.setLevel(logging.CRITICAL)
+            # Add a NullHandler to ensure no output goes anywhere
+            root_logger.addHandler(logging.NullHandler())
+            # When logging is disabled, show absolutely nothing
+            
+        # Update all existing loggers to respect the new logging level
+        self._update_all_loggers(root_logger.level)
 
         self.logger = logging.getLogger('SmartClipCZ')
 
         # Update all existing loggers to respect the new logging level
-        self._update_all_loggers(logging.DEBUG if enable_logging else logging.CRITICAL)
+        self._update_all_loggers(logging.DEBUG if enable_debug_logging else logging.CRITICAL)
 
-        # Log the current logging state
-        if enable_logging:
-            self.logger.info("Debug logging enabled - full logging active")
-        # When logging is disabled, show absolutely nothing
+        # The logging state message is now handled within the if/else block above
 
     def _update_all_loggers(self, level):
         """Update logging level for all component loggers"""
@@ -276,13 +280,13 @@ class SmartClipCZ:
 
     def _log_to_obs(self, level, message):
         """Log to OBS only if logging is enabled or if it's a critical message"""
-        enable_logging = self.config.get("enable_logging", False)
+        enable_debug_logging = self.config.get("advanced_settings", {}).get("enable_debug_logging", False)
 
         # Always show critical errors and warnings
         if level in [obs.LOG_ERROR, obs.LOG_WARNING]:
             obs.script_log(level, message)
         # Only show info messages if logging is enabled
-        elif level == obs.LOG_INFO and enable_logging:
+        elif level == obs.LOG_INFO and enable_debug_logging:
             obs.script_log(level, message)
         
     def load_config(self):
@@ -324,7 +328,6 @@ class SmartClipCZ:
             "twitch_oauth_token": "",
             "twitch_broadcaster_id": "",
             "clip_duration": 30,
-            "enable_logging": False,
             "language": "en",
             "quality_scoring_enabled": True,
             "basic_emotion_enabled": True,
@@ -1375,7 +1378,7 @@ def script_properties():
     obs.obs_properties_add_bool(props, "auto_start_on_stream", texts["auto_start_stop"])
 
     # === DEBUGGING ===
-    obs.obs_properties_add_bool(props, "enable_logging", texts["enable_debug_logging"])
+    obs.obs_properties_add_bool(props, "enable_debug_logging", texts["enable_debug_logging"])
     obs.obs_properties_add_text(props, "logging_info", "", obs.OBS_TEXT_INFO)
     obs.obs_property_set_long_description(obs.obs_properties_get(props, "logging_info"),
                                         "Debug logging creates detailed log files for troubleshooting. "
@@ -1426,8 +1429,8 @@ def script_defaults(settings):
                                        config.get("language", "en"))
 
         # Debugging defaults
-        obs.obs_data_set_default_bool(settings, "enable_logging",
-                                     config.get("enable_logging", False))
+        obs.obs_data_set_default_bool(settings, "enable_debug_logging",
+                                     config.get("advanced_settings", {}).get("enable_debug_logging", False))
 
         # Default emotions enabled - load from config
         enabled_emotions = config.get("enabled_emotions", ["laughter", "excitement", "surprise", "joy"])
@@ -1476,7 +1479,7 @@ def script_defaults(settings):
         obs.obs_data_set_default_double(settings, "vosk_sensitivity", 0.6)
         obs.obs_data_set_default_int(settings, "clip_duration", 30)
         obs.obs_data_set_default_string(settings, "language", "en")
-        obs.obs_data_set_default_bool(settings, "enable_logging", False)
+        obs.obs_data_set_default_bool(settings, "enable_debug_logging", False)
 
     # Load Twitch credentials from config file into OBS UI
     if smartclip and smartclip.config:
@@ -1769,10 +1772,12 @@ def script_update(settings):
             smartclip.texts = smartclip.get_texts()  # Update localized texts
 
         # Update logging configuration
-        new_enable_logging = obs.obs_data_get_bool(settings, "enable_logging")
-        if new_enable_logging != prev_config.get("enable_logging", False):
-            smartclip.logger.info(f"Debug logging {'enabled' if new_enable_logging else 'disabled'}")
-            smartclip.config["enable_logging"] = new_enable_logging
+        enable_debug_logging = obs.obs_data_get_bool(settings, "enable_debug_logging")
+        if enable_debug_logging != prev_config.get("advanced_settings", {}).get("enable_debug_logging", False):
+            smartclip.logger.info(f"Debug logging {'enabled' if enable_debug_logging else 'disabled'}")
+            if "advanced_settings" not in smartclip.config:
+                smartclip.config["advanced_settings"] = {}
+            smartclip.config["advanced_settings"]["enable_debug_logging"] = enable_debug_logging
             smartclip._configure_logging()  # Reconfigure logging with new setting
 
         # Handle auto-start setting change

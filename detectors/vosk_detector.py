@@ -719,9 +719,6 @@ class VoskDetector:
             # Regenerate phrase variations for better matching
             self.phrase_variations = self._generate_phrase_variations()
 
-            # Update custom word corrections map (includes all phrase words automatically)
-            self.custom_word_corrections = self._build_word_corrections_map()
-
             # Log changes if requested
             if log_change:
                 if czech_phrases is not None and old_czech_phrases != self.czech_phrases:

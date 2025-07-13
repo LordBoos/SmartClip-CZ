@@ -261,17 +261,21 @@ class SmartClipCZ:
                     self.logger.warning(f"Vosk initialization failed: {e}")
                     self.vosk_detector = None
             
-            # Initialize Twitch API
+            # Initialize Twitch API (without automatic token refresh during init)
             self.twitch_api = TwitchAPI(
                 client_id=self.config.get("twitch_client_id", ""),
                 oauth_token=self.config.get("twitch_oauth_token", ""),
                 broadcaster_id=self.config.get("twitch_broadcaster_id", ""),
                 client_secret=self.config.get("twitch_client_secret", ""),
-                refresh_token=self.config.get("twitch_refresh_token", "")
+                refresh_token=self.config.get("twitch_refresh_token", ""),
+                skip_init_refresh=True  # Skip automatic refresh during initialization
             )
 
-            # Set up token refresh callback
+            # Set up token refresh callback BEFORE any refresh attempts
             self.twitch_api.set_token_refresh_callback(self._save_refreshed_tokens)
+
+            # Now perform initial validation and refresh if needed
+            self.twitch_api.perform_initial_validation()
 
             # Log OAuth setup status and provide guidance
             self._log_oauth_setup_status()

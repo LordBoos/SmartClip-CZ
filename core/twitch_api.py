@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 class TwitchAPI:
     """Twitch API client for clip creation"""
     
-    def __init__(self, client_id: str, oauth_token: str, broadcaster_id: str, client_secret: str = "", refresh_token: str = ""):
+    def __init__(self, client_id: str, oauth_token: str, broadcaster_id: str, client_secret: str = "", refresh_token: str = "", skip_init_refresh: bool = False):
         self.client_id = client_id
         self.oauth_token = oauth_token
         self.broadcaster_id = broadcaster_id
@@ -57,6 +57,28 @@ class TwitchAPI:
             if not self.refresh_token:
                 self.logger.warning("  Missing refresh_token for token refresh")
 
+        # Perform initial validation (with optional refresh)
+        if not skip_init_refresh:
+            self.perform_initial_validation()
+        else:
+            self.logger.info("Skipping initial validation - will be performed after callback setup")
+            # Just do basic validation without refresh
+            self._is_configured = self._validate_config()
+
+        self.logger.info("=== TWITCH API INITIALIZATION COMPLETE ===")
+
+    def set_token_refresh_callback(self, callback):
+        """Set callback function to save new tokens when refreshed"""
+        self.token_refresh_callback = callback
+        self.logger.info(f"Token refresh callback set: {'OK' if callback else 'NOK'}")
+
+    def perform_initial_validation(self):
+        """Perform initial validation with token refresh if needed"""
+        self.logger.info("Performing initial API validation...")
+
+        # Check token refresh capability
+        can_refresh = bool(self.client_secret and self.refresh_token)
+
         # Validate configuration
         self._is_configured = self._validate_config()
 
@@ -78,12 +100,7 @@ class TwitchAPI:
                 else:
                     self.logger.error("Token refresh failed during initialization")
 
-        self.logger.info("=== TWITCH API INITIALIZATION COMPLETE ===")
-
-    def set_token_refresh_callback(self, callback):
-        """Set callback function to save new tokens when refreshed"""
-        self.token_refresh_callback = callback
-        self.logger.info(f"Token refresh callback set: {'OK' if callback else 'NOK'}")
+        self.logger.info("Initial validation completed")
     
     def _validate_config(self) -> bool:
         """Validate Twitch API configuration"""

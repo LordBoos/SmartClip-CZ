@@ -31,15 +31,7 @@ class OpenSMILEDetector:
     def __init__(self, config_file: str = "IS09_emotion.conf", sensitivity: float = 0.7, result_callback: Optional[Callable] = None):
         # Initialize logger first to avoid attribute errors
         self.logger = logging.getLogger('SmartClipCZ.OpenSMILE')
-
-        # Only add handler if no handlers exist in the entire logger hierarchy
-        if not self.logger.handlers and not logging.getLogger('SmartClipCZ').handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-
-        self.logger.setLevel(logging.INFO)
+        # Don't set level here - respect global logging configuration
 
         self.config_file = config_file
         self.sensitivity = sensitivity

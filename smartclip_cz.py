@@ -118,16 +118,78 @@ class SmartClipCZ:
         
     def setup_logging(self):
         """Setup logging for the plugin"""
-        log_file = os.path.join(plugin_dir, 'smartclip_cz.log')
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file),
-                logging.StreamHandler()
-            ]
-        )
+        self._configure_logging()
+
+    def _configure_logging(self):
+        """Configure logging based on enable_logging setting"""
+        # Clear existing handlers to avoid duplicates
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+
+        # Check if logging is enabled
+        enable_logging = self.config.get("enable_logging", False)
+
+        if enable_logging:
+            # Full logging enabled - create log file and detailed logging
+            log_file = os.path.join(plugin_dir, 'smartclip_cz.log')
+            logging.basicConfig(
+                level=logging.DEBUG,
+                format='[%(name)s] %(asctime)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_file),
+                    logging.StreamHandler()
+                ]
+            )
+        else:
+            # Minimal logging - completely disable all logging output
+            logging.basicConfig(
+                level=logging.CRITICAL,
+                format='[SmartClip CZ] %(levelname)s - %(message)s',
+                handlers=[
+                    logging.NullHandler()  # No output at all when logging is disabled
+                ]
+            )
+
         self.logger = logging.getLogger('SmartClipCZ')
+
+        # Update all existing loggers to respect the new logging level
+        self._update_all_loggers(logging.DEBUG if enable_logging else logging.CRITICAL)
+
+        # Log the current logging state
+        if enable_logging:
+            self.logger.info("Debug logging enabled - full logging active")
+        # When logging is disabled, show absolutely nothing
+
+    def _update_all_loggers(self, level):
+        """Update logging level for all component loggers"""
+        logger_names = [
+            'SmartClipCZ',
+            'SmartClipCZ.TwitchAPI',
+            'SmartClipCZ.AudioHandler',
+            'SmartClipCZ.EmotionDetector',
+            'SmartClipCZ.OpenSMILEDetector',
+            'SmartClipCZ.VoskDetector',
+            'SmartClipCZ.ClipManager',
+            'SmartClipCZ.QualityScorer',
+            'SmartClipCZ.UIManager',
+            'SmartClipCZ.ConfigManager'
+        ]
+
+        for logger_name in logger_names:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(level)
+
+    def _log_to_obs(self, level, message):
+        """Log to OBS only if logging is enabled or if it's a critical message"""
+        enable_logging = self.config.get("enable_logging", False)
+
+        # Always show critical errors and warnings
+        if level in [obs.LOG_ERROR, obs.LOG_WARNING]:
+            obs.script_log(level, message)
+        # Only show info messages if logging is enabled
+        elif level == obs.LOG_INFO and enable_logging:
+            obs.script_log(level, message)
         
     def load_config(self):
         """Load configuration from JSON file"""
@@ -135,7 +197,7 @@ class SmartClipCZ:
             config_path = os.path.join(plugin_dir, 'smartclip_cz_config.json')
             self.config = self.config_manager.load_config(config_path)
             self.logger.info("Configuration loaded successfully")
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Configuration loaded")
+            self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Configuration loaded")
             return True
         except Exception as e:
             self.logger.error(f"Failed to load config: {e}")
@@ -168,6 +230,7 @@ class SmartClipCZ:
             "twitch_oauth_token": "",
             "twitch_broadcaster_id": "",
             "clip_duration": 30,
+            "enable_logging": False,
             "quality_scoring_enabled": True,
             "basic_emotion_enabled": True,
             "opensmile_enabled": True,
@@ -295,7 +358,7 @@ class SmartClipCZ:
             self.ui_manager = UIManager(self)
             
             self.logger.info("All components initialized successfully")
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Components initialized")
+            self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Components initialized")
             return True
             
         except Exception as e:
@@ -331,7 +394,7 @@ class SmartClipCZ:
             self.start_stream_monitoring()
 
             self.logger.info("Detection started successfully")
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Detection started")
+            self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Detection started")
             return True
             
         except Exception as e:
@@ -367,7 +430,7 @@ class SmartClipCZ:
             self.stop_stream_monitoring()
 
             self.logger.info("Detection stopped")
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Detection stopped")
+            self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Detection stopped")
             
         except Exception as e:
             self.logger.error(f"Error stopping detection: {e}")
@@ -595,7 +658,7 @@ class SmartClipCZ:
                 label = self._get_emotion_label(emotion_name)
                 confidence = result.confidence if hasattr(result, 'confidence') else 0
                 self.logger.info(f"[{label}] Emotion detected: {emotion_name} ({confidence:.2f}) - Clip {'created' if success else 'failed'}")
-                obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] [{label}] {emotion_name}: {confidence:.2f}")
+                self._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] [{label}] {emotion_name}: {confidence:.2f}")
 
                 # Update confidence data for widget
                 self.update_confidence_data("basic_emotion", confidence, emotion_name)
@@ -620,7 +683,7 @@ class SmartClipCZ:
             success = self._create_clip(emotion_name, result)
             
             self.logger.info(f"[AI] OpenSMILE detected: {emotion_name} ({confidence:.2f}) - Clip {'created' if success else 'failed'}")
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] [AI] OpenSMILE: {emotion_name} ({confidence:.2f})")
+            self._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] [AI] OpenSMILE: {emotion_name} ({confidence:.2f})")
 
             # Update confidence data for widget
             self.update_confidence_data("opensmile", confidence, emotion_name)
@@ -650,7 +713,7 @@ class SmartClipCZ:
             success = self._create_clip(matched_phrase, result)
             
             self.logger.info(f"[SPEECH] Vosk detected: '{text}' -> '{matched_phrase}' ({confidence:.2f}) - Clip {'created' if success else 'failed'}")
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] [SPEECH] Phrase: {matched_phrase}")
+            self._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] [SPEECH] Phrase: {matched_phrase}")
 
             # Update confidence data for widget
             self.update_confidence_data("vosk", confidence, matched_phrase)
@@ -744,7 +807,7 @@ class SmartClipCZ:
                 
                 self.logger.info(f"[OK] Clip created successfully: {clip_id}")
                 self.logger.info(f"[OK] Clip title: {clip_title}")
-                obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] [OK] Clip created: {clip_id}")
+                self._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] [OK] Clip created: {clip_id}")
                 return True
             else:
                 # Update clip manager with failure
@@ -798,7 +861,7 @@ class SmartClipCZ:
         if was_running:
             self.start_detection()
         
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Configuration reloaded")
+        self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Configuration reloaded")
 
     def start_stream_monitoring(self):
         """Start monitoring streaming state for auto-start/stop functionality"""
@@ -831,17 +894,17 @@ class SmartClipCZ:
                     # Stream started and auto-start is enabled
                     if not self.detection_thread or not self.detection_thread.is_alive():
                         self.logger.info("Stream started - Auto-starting detection")
-                        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Stream started - Auto-starting detection")
+                        self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Stream started - Auto-starting detection")
                         self.start_detection()
                 elif not streaming:
                     # Stream stopped - auto-stop detection if it was auto-started
                     if self.detection_thread and self.detection_thread.is_alive():
                         self.logger.info("Stream stopped - Auto-stopping detection")
-                        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Stream stopped - Auto-stopping detection")
+                        self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Stream stopped - Auto-stopping detection")
                         self.stop_detection()
                     else:
                         self.logger.info("Stream stopped")
-                        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Stream stopped")
+                        self._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Stream stopped")
 
             # Schedule next check if auto-start is still enabled
             if self.config.get("auto_start_on_stream", False):
@@ -1014,6 +1077,13 @@ def script_properties():
     obs.obs_properties_add_bool(props, "quality_scoring_enabled", "⭐ Enable Quality Scoring")
     obs.obs_properties_add_bool(props, "auto_start_on_stream", "🚀 Auto-start/stop Detection with Streaming")
 
+    # === DEBUGGING ===
+    obs.obs_properties_add_bool(props, "enable_logging", "🐛 Enable Debug Logging")
+    obs.obs_properties_add_text(props, "logging_info", "", obs.OBS_TEXT_INFO)
+    obs.obs_property_set_long_description(obs.obs_properties_get(props, "logging_info"),
+                                        "Debug logging creates detailed log files for troubleshooting. "
+                                        "Keep disabled for normal use to improve performance.")
+
     # === TOOLS & TESTING ===
     obs.obs_properties_add_button(props, "show_statistics", "📊 Show Statistics", show_statistics_callback)
     obs.obs_properties_add_button(props, "test_detection", "🧪 Test Detection", test_detection_callback)
@@ -1041,6 +1111,9 @@ def script_defaults(settings):
     obs.obs_data_set_default_string(settings, "microphone_source", "Desktop Audio")
     obs.obs_data_set_default_bool(settings, "voice_chat_enabled", False)
     obs.obs_data_set_default_string(settings, "voice_chat_source", "")
+
+    # Debugging defaults
+    obs.obs_data_set_default_bool(settings, "enable_logging", False)
 
     # Default emotions enabled
     obs.obs_data_set_default_bool(settings, "emotion_laughter", True)
@@ -1336,6 +1409,13 @@ def script_update(settings):
             smartclip.logger.info(f"Clip duration changed to {new_clip_duration} seconds")
         smartclip.config["clip_duration"] = new_clip_duration
 
+        # Update logging configuration
+        new_enable_logging = obs.obs_data_get_bool(settings, "enable_logging")
+        if new_enable_logging != prev_config.get("enable_logging", False):
+            smartclip.logger.info(f"Debug logging {'enabled' if new_enable_logging else 'disabled'}")
+            smartclip.config["enable_logging"] = new_enable_logging
+            smartclip._configure_logging()  # Reconfigure logging with new setting
+
         # Handle auto-start setting change
         if new_auto_start_on_stream:
             smartclip.start_stream_monitoring()
@@ -1452,7 +1532,7 @@ def script_load(settings):
                 if broadcaster_id:
                     smartclip.logger.info(f"Broadcaster ID populated: {broadcaster_id}")
 
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Python plugin loaded successfully")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Python plugin loaded successfully")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Load error: {e}")
 
@@ -1460,7 +1540,7 @@ def script_unload():
     """Script unloaded"""
     try:
         smartclip.stop_detection()
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Python plugin unloaded")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Python plugin unloaded")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Unload error: {e}")
 
@@ -1470,7 +1550,7 @@ def start_detection_callback(props, prop):
     try:
         success = smartclip.start_detection()
         if success:
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Detection started via UI")
+            smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Detection started via UI")
         else:
             obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] Failed to start detection")
     except Exception as e:
@@ -1481,7 +1561,7 @@ def stop_detection_callback(props, prop):
     """Stop detection button callback"""
     try:
         smartclip.stop_detection()
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Detection stopped via UI")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Detection stopped via UI")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Stop callback error: {e}")
     return True
@@ -1490,7 +1570,7 @@ def reload_config_callback(props, prop):
     """Reload config button callback"""
     try:
         smartclip.reload_config()
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Configuration reloaded")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Configuration reloaded")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Reload callback error: {e}")
     return True
@@ -1509,7 +1589,7 @@ SmartClip CZ Statistics:
 - Top Emotions: {list(stats['emotions_detected'].keys())[:3]}
 - Top Phrases: {list(stats['phrases_detected'].keys())[:3]}
         """
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] {stats_text}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] {stats_text}")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Statistics error: {e}")
     return True
@@ -1529,9 +1609,9 @@ def test_detection_callback(props, prop):
         if smartclip.emotion_detector:
             result = smartclip.emotion_detector.detect(test_audio)
             if result:
-                obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Test detection: {result.emotion_type.value} ({result.confidence:.2f})")
+                smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Test detection: {result.emotion_type.value} ({result.confidence:.2f})")
             else:
-                obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Test detection: No emotion detected")
+                smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Test detection: No emotion detected")
         else:
             obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] Emotion detector not available for testing")
 
@@ -1542,7 +1622,7 @@ def test_detection_callback(props, prop):
 def force_token_refresh_callback(props, prop):
     """Force token refresh button callback for debugging"""
     try:
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh requested")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh requested")
 
         if not smartclip.twitch_api:
             obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] Twitch API not initialized")
@@ -1552,10 +1632,10 @@ def force_token_refresh_callback(props, prop):
         success = smartclip.twitch_api.force_token_refresh()
 
         if success:
-            obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh successful")
+            smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Manual token refresh successful")
             # Test API after refresh
             if smartclip.twitch_api.is_configured():
-                obs.script_log(obs.LOG_INFO, "[SmartClip CZ] API validation successful after refresh")
+                smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] API validation successful after refresh")
             else:
                 obs.script_log(obs.LOG_WARNING, "[SmartClip CZ] API validation failed after refresh")
         else:
@@ -1568,8 +1648,8 @@ def force_token_refresh_callback(props, prop):
 def show_confidence_widget_disabled_callback(props, prop):
     """Disabled confidence widget button callback"""
     try:
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] Confidence widget is temporarily disabled")
-        obs.script_log(obs.LOG_INFO, "[SmartClip CZ] This feature is being improved and will be re-enabled in a future update")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] Confidence widget is temporarily disabled")
+        smartclip._log_to_obs(obs.LOG_INFO, "[SmartClip CZ] This feature is being improved and will be re-enabled in a future update")
     except Exception as e:
         obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Disabled callback error: {e}")
     return True
@@ -1587,16 +1667,16 @@ def show_confidence_widget_callback(props, prop):
         standalone_widget_path = os.path.join(widgets_dir, "standalone_confidence_widget.py")
         simple_widget_path = os.path.join(widgets_dir, "simple_confidence_widget.py")
 
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Script directory: {script_dir}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Script directory: {script_dir}")
 
         # Check which widgets exist (prefer OBS-compatible)
         obs_exists = os.path.exists(obs_widget_path)
         standalone_exists = os.path.exists(standalone_widget_path)
         simple_exists = os.path.exists(simple_widget_path)
 
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] OBS widget exists: {obs_exists}")
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Standalone widget exists: {standalone_exists}")
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Simple widget exists: {simple_exists}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] OBS widget exists: {obs_exists}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Standalone widget exists: {standalone_exists}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Simple widget exists: {simple_exists}")
 
         # Try OBS widget first (designed for OBS subprocess)
         if obs_exists:
@@ -1612,15 +1692,15 @@ def show_confidence_widget_callback(props, prop):
             obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] No confidence widget found in: {widgets_dir}")
             return True
 
-        obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Using widget: {widget_name}")
+        smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Using widget: {widget_name}")
 
         # Launch the confidence widget in a separate process
         try:
             # Use the widget path we determined above
             widget_full_path = widget_path
 
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Widget path: {widget_full_path}")
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Working directory: {script_dir}")
+            smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Widget path: {widget_full_path}")
+            smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Working directory: {script_dir}")
 
             # Create environment with locale suppression
             widget_env = dict(os.environ)
@@ -1652,8 +1732,8 @@ def show_confidence_widget_callback(props, prop):
                                          stdout=subprocess.DEVNULL)
 
             widget_type = "standalone" if "standalone" in widget_name else ("simple" if "simple" in widget_name else "advanced")
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Confidence widget ({widget_type}) launched successfully")
-            obs.script_log(obs.LOG_INFO, f"[SmartClip CZ] Process ID: {process.pid}")
+            smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Confidence widget ({widget_type}) launched successfully")
+            smartclip._log_to_obs(obs.LOG_INFO, f"[SmartClip CZ] Process ID: {process.pid}")
 
         except Exception as launch_error:
             obs.script_log(obs.LOG_ERROR, f"[SmartClip CZ] Failed to launch widget: {launch_error}")

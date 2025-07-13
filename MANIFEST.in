@@ -1,0 +1,36 @@
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+
+# Include requirements
+include requirements.txt
+
+# Include installer
+include install.py
+
+# Include configuration files
+include *.conf
+include *.json
+
+# Include package directories
+recursive-include core *.py
+recursive-include detectors *.py
+recursive-include widgets *.py
+
+# Include models directory
+recursive-include models *
+
+# Include tests
+recursive-include tests *.py
+recursive-include tests *.bat
+
+# Exclude compiled Python files
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude __pycache__/*
+
+# Exclude development files
+exclude .gitignore
+exclude .github/*
+exclude docs/build/*
